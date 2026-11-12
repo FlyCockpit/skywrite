@@ -28,7 +28,7 @@ sha2 = "0.11"
 tempfile = "3.23"
 url = "2.5"
 # Already in the dependency tree; NLE timeline import (xmeml, gzip .prproj).
-quick-xml = "0.41"
+quick-xml = "0.42"
 flate2 = "1.1"
 # Already used by Takumi; inspect local image dimensions before decoding.
 imagesize = "0.15"
