@@ -1,0 +1,38 @@
+# cargo-about configuration: generates THIRD_PARTY_LICENSES.html for release archives.
+# Keep `accepted` in sync with the [licenses] allowlist in deny.toml.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "IJG",
+    "Zlib",
+    "Unicode-3.0",
+    "Unlicense",
+    "BSL-1.0",
+    "0BSD",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    # File-level copyleft. Only cssparser, cssparser-macros, dtoa-short and selectors
+    # (via takumi), used unmodified; their source is published on crates.io and
+    # their license text ships in THIRD_PARTY_LICENSES.html.
+    "MPL-2.0",
+]
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+# libwebp-sys declares MIT for its bindings but compiles the vendored libwebp C
+# library, which is BSD-3-Clause; ship that notice too.
+[libwebp-sys.clarify]
+license = "MIT AND BSD-3-Clause"
+
+[[libwebp-sys.clarify.files]]
+path = "vendor/COPYING"
+license = "BSD-3-Clause"
+checksum = "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"

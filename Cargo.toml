@@ -1,0 +1,46 @@
+[package]
+name = "skywrite"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.91"
+description = "Agent-friendly media understanding, synchronization, and editing CLI"
+license = "MIT"
+authors = ["FlyCockpit LLC"]
+repository = "https://github.com/FlyCockpit/skywrite"
+homepage = "https://github.com/FlyCockpit/skywrite"
+readme = "README.md"
+# Repository-only files (CI workflows, issue templates, the README logo) stay out of the crate.
+exclude = [".github/"]
+keywords = ["video", "ffmpeg", "editing", "agent", "cli"]
+categories = ["multimedia::video", "command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.23"
+libc = "0.2"
+# Safe signal notification; one owner supervises all concurrent child process groups.
+signal-hook = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+tempfile = "3.23"
+url = "2.5"
+# Already in the dependency tree; NLE timeline import (xmeml, gzip .prproj).
+quick-xml = "0.41"
+flate2 = "1.1"
+# Already used by Takumi; inspect local image dimensions before decoding.
+imagesize = "0.15"
+# Original upstream stable renderer; HTML parsing and raster codecs are native.
+takumi = { version = "=2.20.0", default-features = false, features = ["from-html", "raster-backend", "png", "jpeg", "webp", "woff2"] }
+
+# Apache Arrow's maintained S3/R2 backend; credentials are supplied explicitly.
+object_store = { version = "=0.14.2", default-features = false, features = ["aws"] }
+tokio = { version = "1", features = ["rt", "time", "net"] }
+futures-util = "0.3"
+async-trait = "0.1"
+
+[profile.release]
+lto = "thin"
+strip = true
