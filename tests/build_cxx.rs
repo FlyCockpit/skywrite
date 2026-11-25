@@ -1,8 +1,7 @@
 //! build.rs picks the C++ compiler and flags for libstdc++.a the way cc-rs
 //! does, so a static musl build links the target's archive, not the host's.
-mod build_cxx {
-    include!("../build_cxx.rs");
-}
+#[path = "../build_cxx.rs"]
+mod build_cxx;
 
 const CROSS: (&str, &str) = ("aarch64-unknown-linux-musl", "x86_64-unknown-linux-gnu");
 const NATIVE: (&str, &str) = ("x86_64-unknown-linux-musl", "x86_64-unknown-linux-musl");

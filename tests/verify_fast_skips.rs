@@ -256,10 +256,55 @@ fn braced(code: &str, open: usize) -> &str {
     panic!("unclosed brace");
 }
 
+/// The `#[path = "…"]` value among the attributes just above line `index`,
+/// read from `source` (the lines as written: `code` blanks string literals).
+fn path_attribute<'a>(
+    lines: &[(usize, &str)],
+    source: &[&'a str],
+    index: usize,
+) -> Option<&'a str> {
+    (0..index)
+        .rev()
+        .map(|at| (at, lines[at].1.trim()))
+        .take_while(|(_, line)| line.is_empty() || (line.starts_with("#[") && line.ends_with(']')))
+        .find(|(_, line)| line.starts_with("#[path"))
+        .map(|(at, _)| {
+            path_value(source[at])
+                .unwrap_or_else(|| panic!("cannot read the path of {:?}", source[at]))
+        })
+}
+
+/// The string in `#[path = "…"]` at the start of `line`, skipping spaces and
+/// `/* … */` comments around the `=` (paths hold no `"` or `\`).
+fn path_value(line: &str) -> Option<&str> {
+    fn skip(mut rest: &str) -> Option<&str> {
+        loop {
+            rest = rest.trim_start();
+            match rest.strip_prefix("/*") {
+                Some(comment) => rest = &comment[comment.find("*/")? + 2..],
+                None => return Some(rest),
+            }
+        }
+    }
+    let rest = skip(line.trim_start().strip_prefix("#[path")?)?;
+    let rest = skip(rest.strip_prefix('=')?)?.strip_prefix('"')?;
+    Some(&rest[..rest.find('"')?])
+}
+
 /// Adds the libtest names (`module::inner::test`) of the `#[test]` fns in
 /// module `code` and its submodules to `out`. `dir` holds its `mod x;` files,
 /// following Rust's rules (`dir/x.rs` or `dir/x/mod.rs`; children in `dir/x/`).
-fn qualified_tests(code: &str, prefix: &str, dir: &Path, out: &mut Vec<String>) {
+/// `source` is `code` as written, line for line. At the top level of a file,
+/// `file_dir` is that file's directory, which a `#[path = "…"]` module is
+/// relative to (its own `mod x;` files are then beside it).
+fn qualified_tests(
+    code: &str,
+    source: &[&str],
+    prefix: &str,
+    dir: &Path,
+    file_dir: Option<&Path>,
+    out: &mut Vec<String>,
+) {
     let lines = depths(code);
     let mut offset = 0;
     for (index, (depth, line)) in lines.iter().enumerate() {
@@ -286,27 +331,46 @@ fn qualified_tests(code: &str, prefix: &str, dir: &Path, out: &mut Vec<String>) 
         let inner = format!("{prefix}{name}::");
         let after = rest[name.len()..].trim_start();
         if after.starts_with(';') {
-            let file = [
-                dir.join(format!("{name}.rs")),
-                dir.join(&name).join("mod.rs"),
-            ]
-            .into_iter()
-            .find(|file| file.is_file())
-            .unwrap_or_else(|| panic!("no file for mod {name} in {}", dir.display()));
-            let text = code_only(&fs::read_to_string(file).unwrap());
-            qualified_tests(&text, &inner, &dir.join(&name), out);
+            let (file, children) = match path_attribute(&lines, source, index) {
+                Some(path) => {
+                    let base = file_dir.unwrap_or_else(|| {
+                        panic!("#[path] on mod {name} inside an inline module is not supported")
+                    });
+                    let file = base.join(path);
+                    let children = file.parent().unwrap().to_owned();
+                    (file, children)
+                }
+                None => (
+                    [
+                        dir.join(format!("{name}.rs")),
+                        dir.join(&name).join("mod.rs"),
+                    ]
+                    .into_iter()
+                    .find(|file| file.is_file())
+                    .unwrap_or_else(|| panic!("no file for mod {name} in {}", dir.display())),
+                    dir.join(&name),
+                ),
+            };
+            module_file_tests(&file, &inner, &children, out);
         } else if after.starts_with('{') {
             let body = braced(code, start + line.find('{').unwrap());
-            qualified_tests(body, &inner, &dir.join(&name), out);
+            qualified_tests(body, &source[index..], &inner, &dir.join(&name), None, out);
         }
     }
+}
+
+/// Adds the tests of the module in `file` (children in `dir`) to `out`.
+fn module_file_tests(file: &Path, prefix: &str, dir: &Path, out: &mut Vec<String>) {
+    let source = fs::read_to_string(file).unwrap();
+    let code = code_only(&source);
+    let lines: Vec<&str> = source.lines().collect();
+    qualified_tests(&code, &lines, prefix, dir, file.parent(), out);
 }
 
 /// The libtest names of a crate root's tests.
 fn crate_tests(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
-    let code = code_only(&fs::read_to_string(root).unwrap());
-    qualified_tests(&code, "", root.parent().unwrap(), &mut out);
+    module_file_tests(root, "", root.parent().unwrap(), &mut out);
     out
 }
 
@@ -455,6 +519,47 @@ fn test_names_follow_the_module_tree_and_own_attributes() {
         crate_tests(&dir.path().join("lib.rs")),
         ["a::b::deep", "real", "public", "t::inner", "v::scoped"]
     );
+
+    // A `#[path]` module is read from that file (relative to the declaring
+    // file's directory); its own `mod x;` files sit beside it.
+    fs::create_dir_all(dir.path().join("crate/other")).unwrap();
+    fs::write(
+        dir.path().join("crate/root.rs"),
+        "#[path = \"other/x.rs\"] // not \"here\"\n#[cfg(test)]\nmod renamed;\n#[test]\nfn top() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("crate/other/x.rs"),
+        "mod y;\n#[test]\nfn in_x() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("crate/other/y.rs"),
+        "#[test]\nfn in_y() {}\n",
+    )
+    .unwrap();
+    assert_eq!(
+        crate_tests(&dir.path().join("crate/root.rs")),
+        ["renamed::y::in_y", "renamed::in_x", "top"]
+    );
+    // tests/build_cxx.rs loads the shared build_cxx.rs this way.
+    let build_cxx = crate_tests(&Path::new(ROOT).join("tests/build_cxx.rs"));
+    assert!(
+        build_cxx
+            .iter()
+            .any(|test| test == "target_specific_compiler_wins_and_wrappers_are_dropped")
+    );
+}
+
+#[test]
+fn path_values_skip_comments_around_the_equals_sign() {
+    assert_eq!(path_value(r#"#[path = "a/b.rs"]"#), Some("a/b.rs"));
+    assert_eq!(
+        path_value(r#"  #[path /* "decoy.rs" */ = /* "x" */ "real.rs"] // "not.rs""#),
+        Some("real.rs")
+    );
+    assert_eq!(path_value(r#"#[path="tight.rs"]"#), Some("tight.rs"));
+    assert_eq!(path_value(r#"#[path = /* open"#), None);
 }
 
 #[test]
