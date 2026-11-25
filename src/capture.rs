@@ -461,7 +461,7 @@ pub(crate) fn record_from(
     if silent && source.backend() == "avfoundation" {
         bail!(macos_permission_problem(None, true).unwrap());
     }
-    crate::audio::publish_copy(&raw, output, overwrite, parent)?;
+    crate::io::publish_copy(&raw, output, overwrite, parent)?;
     let mut out = json!({
         "version":1,"operation":"record-bed","output":output,"device":source.label(),"backend":source.backend(),
         "duration_seconds":seconds,"samples":timing.samples,"sample_rate":RATE,"channels":1,"format":"pcm_s16le",

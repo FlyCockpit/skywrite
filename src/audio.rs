@@ -1014,31 +1014,8 @@ fn publish_verified(
     }
     let consumed: Vec<PathBuf> = identities.iter().map(|(p, _)| p.clone()).collect();
     crate::io::protect_inputs(output, &consumed)?;
-    publish_copy(finished, output, overwrite, parent)?;
+    crate::io::publish_copy(finished, output, overwrite, parent)?;
     Ok((output_timing, codec))
-}
-/// Copies `finished` beside `output` into a signal-cleaned temporary file,
-/// syncs it and publishes it atomically (no-clobber unless `overwrite`).
-pub(crate) fn publish_copy(
-    finished: &Path,
-    output: &Path,
-    overwrite: bool,
-    parent: &Path,
-) -> Result<()> {
-    let mut publication = tempfile::NamedTempFile::new_in(parent)?;
-    let publication_cleanup = crate::process::CleanupGuard::new(publication.path())?;
-    std::io::copy(
-        &mut std::fs::File::open(finished)?,
-        publication.as_file_mut(),
-    )?;
-    publication.as_file().sync_all()?;
-    if overwrite {
-        publication.persist(output).map_err(|e| e.error)?;
-    } else {
-        crate::io::persist_new(publication, output)?;
-    }
-    drop(publication_cleanup);
-    Ok(())
 }
 fn source_identity_matches(path: &std::path::Path, expected: &str, limit: u64) -> Result<bool> {
     Ok(crate::media::file_sha256_limited(path, limit)? == expected)

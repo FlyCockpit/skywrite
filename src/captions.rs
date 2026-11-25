@@ -337,7 +337,7 @@ pub(crate) fn load_tracks(
                 .iter()
                 .map(|p| {
                     let path = base.join(p);
-                    crate::timeline::check_plain_file(&path)?;
+                    io::check_plain_file(&path)?;
                     media::canonical_file(&path)
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -362,7 +362,7 @@ pub(crate) fn load_tracks(
             .as_ref()
             .context("a caption track needs a source file or from_transcripts")?;
         let source = base.join(source);
-        crate::timeline::check_plain_file(&source)?;
+        io::check_plain_file(&source)?;
         let source = media::canonical_file(&source)?;
         let bytes =
             io::read_files_bounded(std::slice::from_ref(&source), 8 * 1024 * 1024)?.remove(0);
@@ -446,15 +446,6 @@ pub(crate) fn chapter_metadata(chapters: &[Chapter], duration: f64) -> String {
         .unwrap();
     }
     out
-}
-
-pub fn mux(
-    input: &Path,
-    edit: &crate::timeline::ValidatedEdit,
-    output: &Path,
-    overwrite: bool,
-) -> Result<Value> {
-    crate::export::mux_captions(input, edit, output, overwrite)
 }
 
 /// The FFmpeg filter (libass) that burned-in captions are rendered with.
