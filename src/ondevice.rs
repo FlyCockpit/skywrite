@@ -156,13 +156,18 @@ impl Dir {
             path: path.to_owned(),
         }))
     }
+    /// Where `name` in this directory is, for messages; every operation goes
+    /// through the descriptor, never this path.
+    fn path_of(&self, name: &str) -> PathBuf {
+        self.path.join(name)
+    }
     fn raw(&self) -> libc::c_int {
         use std::os::fd::AsRawFd;
         self.fd.as_raw_fd()
     }
     /// A model's own directory inside the root; with `create`, made 0700.
     fn child(&self, name: &str, create: bool) -> Result<Option<Self>> {
-        let path = self.path.join(name);
+        let path = self.path_of(name);
         if create {
             // SAFETY: valid descriptor and NUL-terminated name.
             if unsafe { libc::mkdirat(self.raw(), c_name(name)?.as_ptr(), 0o700) } != 0
@@ -186,7 +191,7 @@ impl Dir {
         } else {
             libc::O_RDONLY
         };
-        let path = self.path.join(name);
+        let path = self.path_of(name);
         // SAFETY: valid descriptor and NUL-terminated name; mode for O_CREAT.
         let fd = unsafe {
             libc::openat(
@@ -239,10 +244,10 @@ impl Dir {
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
                 return Ok(None);
             }
-            return Err(last_os_error("checking", &self.path.join(name)));
+            return Err(last_os_error("checking", &self.path_of(name)));
         }
         if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
-            bail!("{} is not a regular file", self.path.join(name).display());
+            bail!("{} is not a regular file", self.path_of(name).display());
         }
         Ok(Some(stat.st_size as u64))
     }
@@ -254,7 +259,7 @@ impl Dir {
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
                 return Ok(0);
             }
-            return Err(last_os_error("removing", &self.path.join(name)));
+            return Err(last_os_error("removing", &self.path_of(name)));
         }
         Ok(length)
     }
@@ -269,7 +274,7 @@ impl Dir {
             )
         } != 0
         {
-            return Err(last_os_error("publishing", &self.path.join(to)));
+            return Err(last_os_error("publishing", &self.path_of(to)));
         }
         Ok(())
     }
@@ -525,7 +530,7 @@ fn download_from(spec: &Spec, url: &str, cache_dir: Option<&Path>) -> Result<Val
         .child(spec.id, true)?
         .context("creating the model directory")?;
     let part_name = format!("{}.part", spec.file);
-    let part = dir.path.join(&part_name);
+    let part = dir.path_of(&part_name);
     let warnings: Vec<String> = engine_unavailable().into_iter().collect();
     if let Some(mut file) = dir.open_file(spec.file, false)? {
         if file.metadata()?.len() == spec.bytes && sha256_open(&mut file)? == spec.sha256 {
@@ -538,7 +543,7 @@ fn download_from(spec: &Spec, url: &str, cache_dir: Option<&Path>) -> Result<Val
         dir.unlink(spec.file)?;
         eprintln!(
             "Removed {}: it did not match the pinned size and SHA-256",
-            dir.path.join(spec.file).display()
+            dir.path_of(spec.file).display()
         );
     }
     // One validated handle appends to and hashes the partial file.
@@ -580,7 +585,7 @@ fn download_from(spec: &Spec, url: &str, cache_dir: Option<&Path>) -> Result<Val
         dir.unlink(spec.file)?;
         bail!(
             "{} changed while it was being published; it was removed, run the download again",
-            dir.path.join(spec.file).display()
+            dir.path_of(spec.file).display()
         );
     }
     Ok(

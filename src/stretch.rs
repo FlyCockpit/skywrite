@@ -98,14 +98,14 @@ pub struct Calibration {
 /// The resolved speed handling for one command run.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SpeedFilters {
-    pub requested: StretcherChoice,
+    requested: StretcherChoice,
     /// `None` when no clip needed a time-stretcher, so FFmpeg was not checked.
-    pub rubberband_available: Option<bool>,
+    rubberband_available: Option<bool>,
     /// `None` when every speed is 1 or within the resample limit.
-    pub stretcher: Option<Stretcher>,
-    pub calibrations: Vec<Calibration>,
+    stretcher: Option<Stretcher>,
+    calibrations: Vec<Calibration>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<String>,
+    warnings: Vec<String>,
 }
 
 /// True when `speed` needs a time-stretcher rather than passthrough or resampling.
@@ -235,6 +235,11 @@ impl SpeedFilters {
                     .join(", ")
             ),
         }
+    }
+
+    /// What the command's own `warnings` should repeat (also in [`Self::report`]).
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.clone()
     }
 
     pub fn report(&self) -> Value {

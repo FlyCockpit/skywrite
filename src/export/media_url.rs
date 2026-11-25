@@ -71,11 +71,14 @@ pub(super) struct MediaUrls {
     urls: HashMap<PathBuf, (String, String)>,
     /// The local folder mirrored at the media root, when one is given.
     pub(super) base: Option<PathBuf>,
-    pub(super) warnings: Vec<String>,
 }
 
 impl MediaUrls {
-    pub(super) fn new(edit: &ValidatedEdit, root: Option<&MediaRoot>) -> Result<Self> {
+    /// The URLs of every source, and warnings about relinking them.
+    pub(super) fn new(
+        edit: &ValidatedEdit,
+        root: Option<&MediaRoot>,
+    ) -> Result<(Self, Vec<String>)> {
         let mut sources: Vec<&Path> = edit
             .video_clips()
             .map(|c| c.source.as_path())
@@ -151,11 +154,7 @@ impl MediaUrls {
             };
             urls.insert(source.to_owned(), pair);
         }
-        Ok(Self {
-            urls,
-            base,
-            warnings,
-        })
+        Ok((Self { urls, base }, warnings))
     }
 
     pub(super) fn get(&self, source: &Path, style: Style) -> &str {

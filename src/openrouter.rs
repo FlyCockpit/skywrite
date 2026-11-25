@@ -120,8 +120,8 @@ impl Client {
             None => self.provider.api_key(),
         }
     }
-    pub fn provider(&self) -> &Provider {
-        &self.provider
+    pub fn is_openrouter(&self) -> bool {
+        self.provider.is_openrouter()
     }
     /// A built-in OpenRouter client against a loopback fixture.
     #[cfg(test)]
@@ -130,11 +130,9 @@ impl Client {
         cache_dir: Option<PathBuf>,
         timeout: Duration,
     ) -> Self {
-        let mut provider = Provider::builtin();
-        provider.base_url = base_url;
         Self {
             client: http_client(timeout, timeout).unwrap(),
-            provider,
+            provider: Provider::builtin_at(base_url),
             cache_dir,
             key_override: Some("DUMMY_TEST_ONLY".into()),
         }
@@ -148,21 +146,11 @@ impl Client {
             )));
         }
         let hint = if error.is_timeout() {
-            self.deadline_hint()
+            self.provider.deadline_hint()
         } else {
             String::new()
         };
         anyhow::Error::new(error).context(format!("{what} failed{hint}"))
-    }
-    fn deadline_hint(&self) -> String {
-        if self.provider.is_openrouter() {
-            return String::new();
-        }
-        format!(
-            " (provider {} deadline {} s; slow local models may need skywrite providers add ... --timeout SECONDS)",
-            self.provider.name,
-            self.provider.timeout.as_secs()
-        )
     }
     /// A body that stalls past the deadline fails while reading, after the
     /// headers arrived; it gets the same deadline guidance as a slow reply.
@@ -171,7 +159,7 @@ impl Client {
             if format!("{error:#}").contains("timed out") {
                 error.context(format!(
                     "reading the response timed out{}",
-                    self.deadline_hint()
+                    self.provider.deadline_hint()
                 ))
             } else {
                 error
@@ -205,12 +193,10 @@ impl Client {
             if endpoint != "models" {
                 bail!("unsupported provider catalog endpoint");
             }
-            let mut request = self
-                .client
-                .get(format!("{}/models", self.provider.base_url));
-            for (header, value) in &self.provider.headers {
-                request = request.header(header, value);
-            }
+            let mut request = self.provider.with_headers(
+                self.client
+                    .get(format!("{}/models", self.provider.base_url)),
+            );
             // A configured key variable that is unset fails before any request.
             if let Some(token) = self.api_key()? {
                 request = request.bearer_auth(token);
@@ -302,9 +288,7 @@ impl Client {
         if let Some(token) = &token {
             request = request.bearer_auth(token);
         }
-        for (header, value) in &self.provider.headers {
-            request = request.header(header, value);
-        }
+        request = self.provider.with_headers(request);
         request = if openrouter {
             let mut routed = body.clone();
             if let Some(provider) = policy {

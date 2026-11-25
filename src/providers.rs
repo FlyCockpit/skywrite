@@ -102,6 +102,40 @@ impl Provider {
             timeout: Duration::from_secs(config.timeout_seconds.unwrap_or(DEFAULT_TIMEOUT_SECONDS)),
         })
     }
+    /// The same provider with another per-request deadline.
+    pub fn with_timeout(self, timeout: Duration) -> Self {
+        Self { timeout, ..self }
+    }
+    /// The built-in provider at another base URL (a loopback fixture).
+    #[cfg(test)]
+    pub(crate) fn builtin_at(base_url: String) -> Self {
+        Self {
+            base_url,
+            ..Self::builtin()
+        }
+    }
+    /// `request` with this provider's configured extra headers.
+    pub(crate) fn with_headers(
+        &self,
+        mut request: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
+        for (header, value) in &self.headers {
+            request = request.header(header, value);
+        }
+        request
+    }
+    /// Advice for a request that ran out of this provider's deadline: only
+    /// custom providers have one to raise.
+    pub(crate) fn deadline_hint(&self) -> String {
+        if self.is_openrouter() {
+            return String::new();
+        }
+        format!(
+            " (provider {} deadline {} s; slow local models may need skywrite providers add ... --timeout SECONDS)",
+            self.name,
+            self.timeout.as_secs()
+        )
+    }
     /// The built-in provider is the only one that receives OpenRouter-specific
     /// request fields (data policy routing, usage accounting, reasoning toggles).
     pub fn is_openrouter(&self) -> bool {
