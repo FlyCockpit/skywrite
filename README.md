@@ -33,23 +33,9 @@ Skywrite is a single Rust binary. It shells out to FFmpeg and ffprobe for all de
 
 ## Quick start
 
-```sh
-cargo build --release --locked
-./target/release/skywrite doctor
-./target/release/skywrite init
-./target/release/skywrite schema
-./target/release/skywrite inspect camera-a.mp4
-```
+Skywrite needs FFmpeg 5.1 or newer with `ffprobe` on your `PATH` (on Debian or Ubuntu: `apt-get install ffmpeg`; on macOS see [Installation](#installation)).
 
-Put the binary on your `PATH` to run it as `skywrite`, as the examples below do.
-
-## Installation
-
-Skywrite needs FFmpeg 5.1 or newer and ffprobe on your `PATH` (the full test suite passes on 5.1.2, 6.1.1, 7.0.2, 7.1, 7.1.1, 8.0.1, 8.1.2 and 9.1; see [validation](docs/validation.md#ffmpeg-version-compatibility)); for security fixes, use the latest point release of a maintained FFmpeg branch. FFmpeg must include H.264 (`libx264`) and AAC encoding for the built-in MP4 renderer. Linux and macOS are supported. Burned-in captions also need the `subtitles` filter (libass). On macOS, Homebrew's `ffmpeg` formula lacks libass and rubberband; install the keg-only `ffmpeg-full` and put `$(brew --prefix ffmpeg-full)/bin` first on your `PATH`.
-
-### Prebuilt binaries
-
-Each [GitHub release](https://github.com/FlyCockpit/skywrite/releases) has `skywrite-<version>-<target>.tar.gz` archives for Linux (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`; static binaries that run on any distribution, with no glibc version requirement) and macOS (`aarch64-apple-darwin`, `x86_64-apple-darwin`), a `SHA256SUMS` file and the third-party license notices. Download the archive for your platform, check it and put the binary on your `PATH`:
+**1. Install.** Prebuilt binaries are published on [GitHub releases](https://github.com/FlyCockpit/skywrite/releases), starting with v1.0.0. Once v1.0.0 is published, download the archive for your platform, check it and put the binary on your `PATH`:
 
 ```sh
 VERSION=1.0.0
@@ -61,10 +47,42 @@ sha256sum --check --ignore-missing SHA256SUMS   # macOS: shasum -a 256 --check -
 tar -xzf "skywrite-$VERSION-$TARGET.tar.gz"
 mkdir -p ~/.local/bin
 install -m 0755 "skywrite-$VERSION-$TARGET/skywrite" ~/.local/bin/
-skywrite doctor   # if this is not found, add ~/.local/bin to your PATH
+export PATH="$HOME/.local/bin:$PATH"   # add this line to your shell profile to keep it
 ```
 
-Every release asset, including `SHA256SUMS`, carries a signed GitHub build provenance attestation. With the [GitHub CLI](https://cli.github.com/) you can check that a file was built by this repository's release workflow:
+**Or build from source** (the only option until the first release is published). This needs Rust 1.91 or newer ([rustup](https://rustup.rs)), and cmake and a C++ compiler for the on-device transcription engine that the default build includes (on Debian or Ubuntu: `apt-get install cmake g++`). The first build compiles that engine's C++ and takes several minutes.
+
+```sh
+git clone https://github.com/FlyCockpit/skywrite.git
+cd skywrite
+cargo build --release --locked
+mkdir -p ~/.local/bin
+install -m 0755 target/release/skywrite ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"   # add this line to your shell profile to keep it
+```
+
+Without cmake or a C++ compiler, build with `cargo build --release --locked --no-default-features`. That build leaves out only on-device transcription: `ondevice:` models then report that the engine is missing.
+
+**2. Try it.** The `ffmpeg` line makes a 3-second test clip with color bars and a tone:
+
+```sh
+skywrite doctor
+skywrite init
+skywrite schema
+ffmpeg -f lavfi -i testsrc=d=3 -f lavfi -i sine=d=3 -pix_fmt yuv420p camera-a.mp4
+skywrite inspect camera-a.mp4
+skywrite skills read technical-explainer
+```
+
+## Installation
+
+Skywrite needs FFmpeg 5.1 or newer and ffprobe on your `PATH` (the full test suite passes on 5.1.2, 6.1.1, 7.0.2, 7.1, 7.1.1, 8.0.1, 8.1.2 and 9.1; see [validation](docs/validation.md#ffmpeg-version-compatibility)); for security fixes, use the latest point release of a maintained FFmpeg branch. FFmpeg must include H.264 (`libx264`) and AAC encoding for the built-in MP4 renderer. Linux and macOS are supported. Burned-in captions also need the `subtitles` filter (libass). On macOS, Homebrew's `ffmpeg` formula lacks libass and rubberband; install the keg-only `ffmpeg-full` and put `$(brew --prefix ffmpeg-full)/bin` first on your `PATH`.
+
+### Prebuilt binaries
+
+Each [GitHub release](https://github.com/FlyCockpit/skywrite/releases) has `skywrite-<version>-<target>.tar.gz` archives for Linux (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`; static binaries that run on any distribution, with no glibc version requirement) and macOS (`aarch64-apple-darwin`, `x86_64-apple-darwin`), a `SHA256SUMS` file and the third-party license notices. The [Quick start](#quick-start) shows how to download, check and install one.
+
+Every release asset, including `SHA256SUMS`, carries a signed GitHub build provenance attestation. With the [GitHub CLI](https://cli.github.com/) you can check that a file was built by this repository's release workflow. Run it in the directory and shell where you downloaded the archive in the [Quick start](#quick-start), so `VERSION` and `TARGET` are still set:
 
 ```sh
 gh attestation verify "skywrite-$VERSION-$TARGET.tar.gz" --repo FlyCockpit/skywrite
@@ -74,14 +92,7 @@ The crate is not published to crates.io.
 
 ### Build from source
 
-Rust 1.91 or newer is required.
-
-```sh
-git clone https://github.com/FlyCockpit/skywrite.git
-cd skywrite
-cargo build --release --locked
-./target/release/skywrite doctor
-```
+Rust 1.91 or newer, cmake and a C++ compiler are required (`--no-default-features` builds without cmake and C++ but leaves out on-device transcription). The [Quick start](#quick-start) has the commands.
 
 `doctor` lists model `providers` and checks that each configured custom provider answers its `/models` (no generation; OpenRouter is not contacted; `network_checked` says whether any check ran). It also reports `audio_stretcher.rubberband_available`: whether this FFmpeg has the `rubberband` filter used for pitch-preserving speed changes (see [edit format](docs/edit-format.md)). It also reports `burned_captions.subtitles_filter_available`: whether this FFmpeg has the libass `subtitles` filter that burned-in captions need. When the filter is missing, a `fix` hint says how to get it (see [Installation](#installation)).
 
