@@ -718,9 +718,6 @@ pub fn align_transcripts(
     result.warnings.push("word timestamps are ASR estimates; validate against audio before frame-accurate conforming".into());
     Ok(result)
 }
-pub fn align_audio(reference: &Path, asset: &Path, options: &SyncOptions) -> Result<SyncResult> {
-    crate::audio_sync::align_audio(reference, asset, options)
-}
 #[cfg(test)]
 mod tests {
     use super::*;

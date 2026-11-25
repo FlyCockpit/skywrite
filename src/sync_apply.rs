@@ -710,7 +710,7 @@ fn verify(
             .with_context(|| format!("decoding the reference around {label}"))?;
         let expected_offset = expected_offset - lo;
         verified += 1;
-        match crate::sync::align_audio(&excerpt, &render, &options) {
+        match crate::audio_sync::align_audio(&excerpt, &render, &options) {
             Ok(m) => {
                 let at = |u: f64| m.offset_seconds + m.scale * u - (expected_offset + r.speed * u);
                 let (start, end) = (at(0.0), at(p.duration));

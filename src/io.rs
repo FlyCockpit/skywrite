@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Serialize, de::DeserializeOwned};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -99,6 +99,48 @@ pub fn protect_inputs(output: &Path, inputs: &[std::path::PathBuf]) -> Result<()
             }
         }
     }
+    Ok(())
+}
+/// Refuse a symlink or a non-regular file at `path` itself (directories in
+/// the path may be symlinks, as system temp and home directories often are).
+pub(crate) fn check_plain_file(path: &Path) -> Result<()> {
+    let meta = std::fs::symlink_metadata(path)
+        .with_context(|| format!("reading media {}", path.display()))?;
+    let kind = meta.file_type();
+    if kind.is_symlink() {
+        bail!(
+            "source {} is a symlink; reference the target file directly",
+            path.display()
+        );
+    }
+    ensure!(
+        kind.is_file(),
+        "source {} is not a regular file (directories, FIFOs, devices and sockets are refused)",
+        path.display()
+    );
+    Ok(())
+}
+/// Copies `finished` beside `output` into a signal-cleaned temporary file,
+/// syncs it and publishes it atomically (no-clobber unless `overwrite`).
+pub(crate) fn publish_copy(
+    finished: &Path,
+    output: &Path,
+    overwrite: bool,
+    parent: &Path,
+) -> Result<()> {
+    let mut publication = tempfile::NamedTempFile::new_in(parent)?;
+    let publication_cleanup = crate::process::CleanupGuard::new(publication.path())?;
+    std::io::copy(
+        &mut std::fs::File::open(finished)?,
+        publication.as_file_mut(),
+    )?;
+    publication.as_file().sync_all()?;
+    if overwrite {
+        publication.persist(output).map_err(|e| e.error)?;
+    } else {
+        persist_new(publication, output)?;
+    }
+    drop(publication_cleanup);
     Ok(())
 }
 /// Publish a complete output atomically; replacement is always explicit.

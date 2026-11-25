@@ -1093,7 +1093,7 @@ fn transcript_cues(
         } else {
             base.join(&transcript.source)
         };
-        check_plain_file(&source)
+        io::check_plain_file(&source)
             .with_context(|| format!("transcript {} source", path.display()))?;
         let source = media::canonical_file(&source)
             .with_context(|| format!("transcript {} source", path.display()))?;
@@ -1481,7 +1481,7 @@ fn resolve(path: &Path, base: &Path) -> Result<PathBuf> {
     } else {
         base.join(path)
     };
-    check_plain_file(&path)?;
+    io::check_plain_file(&path)?;
     let path = media::canonical_file(&path)?;
     let text = path
         .to_str()
@@ -1491,25 +1491,6 @@ fn resolve(path: &Path, base: &Path) -> Result<PathBuf> {
         "source path contains XML control characters"
     );
     Ok(path)
-}
-/// Refuse a symlink or a non-regular file at `path` itself (directories in
-/// the path may be symlinks, as system temp and home directories often are).
-pub(crate) fn check_plain_file(path: &Path) -> Result<()> {
-    let meta = std::fs::symlink_metadata(path)
-        .with_context(|| format!("reading media {}", path.display()))?;
-    let kind = meta.file_type();
-    if kind.is_symlink() {
-        bail!(
-            "source {} is a symlink; reference the target file directly",
-            path.display()
-        );
-    }
-    ensure!(
-        kind.is_file(),
-        "source {} is not a regular file (directories, FIFOs, devices and sockets are refused)",
-        path.display()
-    );
-    Ok(())
 }
 fn probe_cached(
     path: &Path,

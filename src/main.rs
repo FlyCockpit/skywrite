@@ -571,7 +571,7 @@ fn execute(command: Command) -> Result<Value> {
                 edit,
                 output,
                 overwrite,
-            } => skywrite::captions::mux(
+            } => skywrite::export::mux_captions(
                 &media,
                 &skywrite::timeline::load_and_validate(&edit)?,
                 &output,
@@ -801,7 +801,7 @@ fn execute(command: Command) -> Result<Value> {
                 result.asset = media[1].canonicalize().unwrap_or_else(|_| media[1].clone());
                 result
             } else {
-                skywrite::sync::align_audio(reference_path, asset_path, &options)?
+                skywrite::audio_sync::align_audio(reference_path, asset_path, &options)?
             };
             finish(serde_json::to_value(result)?, &args.output)
         }

@@ -183,9 +183,9 @@ fn native_python_soft_tracks_chapters_mux_and_no_clobber() {
     );
     assert_metadata(&python);
     let mux = d.path().join("mux.mp4");
-    captions::mux(&native, &edit, &mux, false).unwrap();
+    skywrite::export::mux_captions(&native, &edit, &mux, false).unwrap();
     assert_metadata(&mux);
-    assert!(captions::mux(&native, &edit, &native, true).is_err());
+    assert!(skywrite::export::mux_captions(&native, &edit, &native, true).is_err());
     for protected in [&edit_file, &d.path().join("cues.srt")] {
         let before = fs::read(protected).unwrap();
         assert!(
@@ -659,7 +659,7 @@ fn literal_caption_text_is_exact_or_rejected_before_publication() {
         ],
     );
     let mux = d.path().join("mux.mp4");
-    captions::mux(&native, &edit, &mux, false).unwrap();
+    skywrite::export::mux_captions(&native, &edit, &mux, false).unwrap();
     for output in [&native, &python, &mux] {
         assert_eq!(literal_soft_text(output), text);
         assert_eq!(bright_pixels(output, "0.8"), 0);
