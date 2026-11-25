@@ -260,7 +260,7 @@ fn real_engine_on_silence_and_a_short_tail() {
 fn hosted_transcription_listing_adds_on_device_models_only_when_filters_allow() {
     let env = Env::new();
     let endpoint = "models?output_modalities=transcription";
-    let key = skywrite::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = skywrite::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     skywrite::io::write_json(
         &env.cache().join("models").join(format!("{key}.json")),
         &serde_json::json!({"version":1,"endpoint":endpoint,"fetched_at":1,"body":{"data":[

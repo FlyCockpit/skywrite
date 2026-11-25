@@ -48,7 +48,7 @@ Tests must not use the network, paid accounts or the real `~/.config`/`~/.cache`
 | On-device transcription (`ondevice:` provider: pinned model download/remove, transcribe.cpp engine) | `src/ondevice.rs`, `build.rs` (static musl C++ runtime) |
 | Analysis, transcripts, captions, review, describe | `src/analysis.rs`, `src/transcript.rs`, `src/captions.rs`, `src/review.rs`, `src/describe.rs`, `src/verify.rs` |
 | Generation (durable paid jobs), models, OpenRouter, public-URL diagnostics | `src/generation.rs`, `src/project.rs` (+ `src/project/tests.rs`), `src/audio_generation.rs`, `src/speech_split.rs`, `src/models.rs`, `src/openrouter.rs`, `src/public_access.rs` |
-| Storage, outputs, cache, workspace, fonts, images | `src/storage.rs`, `src/outputs.rs`, `src/cache.rs`, `src/workspace.rs`, `src/fonts.rs`, `src/image.rs` |
+| Storage, outputs, cache, digests (SHA-256 ids and cache keys), workspace, fonts, images | `src/storage.rs`, `src/outputs.rs`, `src/cache.rs`, `src/digest.rs`, `src/workspace.rs`, `src/fonts.rs`, `src/image.rs` |
 | Process and file safety | `src/process.rs` (bounded subprocesses), `src/io.rs` (atomic writes, input protection) |
 | User docs and skills | `docs/`, `README.md`, `skills/skywrite/SKILL.md`, `assets/skills/*.md` |
 

@@ -52,7 +52,7 @@ fn cached_caption_paths_require_explicit_authority_before_validation() {
     let brief = "Preserve supplied word precision with separate dialogue audio";
     let prompt = skywrite::analysis::suggest_prompt(brief, &schema["edit"], &encoded);
     let request = json!({"model":"fixture/dialogue","messages":[{"role":"user","content":prompt}],"response_format":{"type":"json_object"},"max_tokens":4000,"temperature":0.2});
-    let key = skywrite::openrouter::cache_key(&[
+    let key = skywrite::digest::cache_key(&[
         skywrite::providers::Provider::builtin()
             .identity()
             .as_bytes(),

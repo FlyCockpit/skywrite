@@ -1,4 +1,5 @@
 //! Free, cached model discovery and explicit task model selection.
+use crate::workspace::canonical_task;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -13,26 +14,6 @@ pub const TASKS: &[&str] = crate::workspace::MODEL_TASKS;
 /// (docs/model-evaluation.md): keeps fillers and repeated words Whisper drops.
 pub const TRANSCRIPTION_FALLBACK: &str = "elevenlabs/scribe-v2";
 
-/// Canonical task names are persisted; short aliases are accepted at CLI boundaries.
-pub fn canonical_task(task: &str) -> Result<&'static str> {
-    let name = match task {
-        "image" => "image-generation",
-        "video" => "video-generation",
-        "speech" => "speech-generation",
-        "music" => "music-generation",
-        other => other,
-    };
-    TASKS
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == name)
-        .with_context(|| {
-            format!(
-                "unknown model task {task}; choose {} (aliases: image, video, speech, music)",
-                TASKS.join(", ")
-            )
-        })
-}
 pub fn validate_task(task: &str) -> Result<()> {
     canonical_task(task).map(|_| ())
 }
@@ -191,9 +172,9 @@ fn load_provider_catalog(
     let root = crate::cache::cache_root(options.cache_dir)?;
     // The built-in key is unchanged; custom catalogs also key on the provider.
     let key = if provider.is_openrouter() {
-        crate::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()])
+        crate::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()])
     } else {
-        crate::openrouter::cache_key(&[
+        crate::digest::cache_key(&[
             b"catalog-v1",
             provider.identity().as_bytes(),
             endpoint.as_bytes(),

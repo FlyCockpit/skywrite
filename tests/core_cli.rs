@@ -253,7 +253,7 @@ fn cached_word_transcription_uses_selected_source_time_and_rejects_stale_source(
         skywrite::media::extract_audio(&info, &audio, offset, 10.0).unwrap();
         let request = json!({"model":"cached-word-fixture","input_audio":{"data":STANDARD.encode(std::fs::read(audio).unwrap()),"format":"wav"},"response_format":"verbose_json","timestamp_granularities":["word"]});
         let bytes = serde_json::to_vec(&request).unwrap();
-        let hash = skywrite::openrouter::cache_key(&[
+        let hash = skywrite::digest::cache_key(&[
             skywrite::providers::Provider::builtin()
                 .identity()
                 .as_bytes(),

@@ -126,7 +126,7 @@ fn server(png: Vec<u8>, block_output: Option<PathBuf>) -> Server {
     }
 }
 fn catalog(cache: &Path, endpoint: &str, data: Value) {
-    let key = crate::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = crate::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     crate::io::write_json(
         &cache.join("models").join(format!("{key}.json")),
         &json!({"version":1,"endpoint":endpoint,"fetched_at":1,"body":{"data":data}}),
@@ -615,7 +615,7 @@ fn prepared_split_parent_resumes_offline_from_saved_plan() {
     let body = json!({"model":"fixture/speech","input":"First saved section.\n\nSecond saved section.","response_format":"mp3"});
     let mut template = body.clone();
     template["input"] = Value::Null;
-    let id = crate::openrouter::cache_key(&[
+    let id = crate::digest::cache_key(&[
         b"skywrite-split-speech-v1",
         &serde_json::to_vec(
             &json!({"template":template,"sections":sections,"paragraph_pause":0.3}),
@@ -650,7 +650,7 @@ fn prepared_split_parent_resumes_offline_from_saved_plan() {
     for section in sections.as_array().unwrap() {
         let mut request = body.clone();
         request["input"] = section["text"].clone();
-        let child_id = crate::openrouter::cache_key(&[
+        let child_id = crate::digest::cache_key(&[
             b"skywrite-generation-v1",
             b"speech-generation",
             &serde_json::to_vec(&request).unwrap(),
@@ -666,7 +666,7 @@ fn prepared_split_parent_resumes_offline_from_saved_plan() {
             "version":1,"id":child_id,"task":"speech-generation","model":"fixture/speech",
             "status":"completed","created_at":1,"updated_at":1,"request":request,"references":[],
             "remote_id":null,"generation_id":null,"usage":null,"error":null,
-            "artifact":{"file":"result.wav","sha256":crate::generation::bytes_sha256(&bytes),
+            "artifact":{"file":"result.wav","sha256":crate::digest::bytes_sha256(&bytes),
                 "media_type":"audio/wav","bytes":bytes.len(),"decode_validation_version":1}
         }), false).unwrap();
     }
@@ -1007,7 +1007,7 @@ fn project_image_hash_admission_deduplicates_real_reads_and_rejects_oversize() {
     assert_eq!(identity.len(), 1);
     assert_eq!(
         identity.values().next().unwrap(),
-        &crate::generation::bytes_sha256(b"owned image content")
+        &crate::digest::bytes_sha256(b"owned image content")
     );
     File::create(&image)
         .unwrap()

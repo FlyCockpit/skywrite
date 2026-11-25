@@ -836,10 +836,7 @@ pub(crate) mod hash_tests {
         assert!(file_sha256_limited(&path, 16).is_err());
         READ_BYTES.with(|n| n.set(0));
         let digest = file_sha256(&path).unwrap();
-        assert_eq!(
-            digest,
-            crate::generation::bytes_sha256(&vec![42; 1024 * 1024])
-        );
+        assert_eq!(digest, crate::digest::bytes_sha256(&vec![42; 1024 * 1024]));
         assert_eq!(
             READ_BYTES.with(Cell::get),
             1024 * 1024,

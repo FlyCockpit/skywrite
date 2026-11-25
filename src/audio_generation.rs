@@ -59,7 +59,7 @@ pub fn speech(args: SpeechArgs) -> Result<Value> {
         let path = crate::media::canonical_file(path)?;
         let bytes =
             crate::generation::read_bounded_file(&path, crate::speech_split::MAX_SCRIPT_BYTES)?;
-        let hash = crate::generation::bytes_sha256(&bytes);
+        let hash = crate::digest::bytes_sha256(&bytes);
         let text = String::from_utf8(bytes).context("narration script must be UTF-8")?;
         refs.push(json!({"path":path,"sha256":hash,"kind":"narration-script"}));
         text

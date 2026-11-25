@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -651,7 +652,12 @@ pub fn delete_upload(record: &UploadRecord) -> Result<()> {
         Ok(())
     })
 }
-pub fn execute(command: StorageCommand) -> Result<Value> {
+/// `active_uploads` lists the upload identities that unfinished generation
+/// jobs still reference; `purge` calls it while holding the storage lock.
+pub fn execute(
+    command: StorageCommand,
+    active_uploads: impl FnOnce() -> Result<HashSet<String>>,
+) -> Result<Value> {
     match command {
         StorageCommand::Configure {
             endpoint,
@@ -718,17 +724,29 @@ pub fn execute(command: StorageCommand) -> Result<Value> {
             include_active,
             limit,
             after,
-        } => purge(dry_run, include_active, limit, after.as_deref()),
+        } => purge(
+            dry_run,
+            include_active,
+            limit,
+            after.as_deref(),
+            active_uploads,
+        ),
     }
 }
-fn purge(dry_run: bool, include_active: bool, limit: usize, after: Option<&str>) -> Result<Value> {
+fn purge(
+    dry_run: bool,
+    include_active: bool,
+    limit: usize,
+    after: Option<&str>,
+    active_uploads: impl FnOnce() -> Result<HashSet<String>>,
+) -> Result<Value> {
     ensure!((1..=10000).contains(&limit), "purge limit must be 1..10000");
     let _lock = operation_lock()?;
     let config = configuration()?;
     let active = if include_active {
-        std::collections::HashSet::new()
+        HashSet::new()
     } else {
-        crate::generation::active_storage_uploads(None)?
+        active_uploads()?
     };
     if let Some(after) = after {
         ensure!(

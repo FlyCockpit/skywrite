@@ -26,7 +26,7 @@ fn success(out: Output) -> Value {
     serde_json::from_slice(&out.stdout).unwrap()
 }
 fn catalog(root: &Path, endpoint: &str, data: Value) {
-    let key = skywrite::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = skywrite::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     let body = json!({"version":1,"endpoint":endpoint,"fetched_at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),"body":{"data":data}});
     skywrite::io::write_json(
         &root.join("models").join(format!("{key}.json")),

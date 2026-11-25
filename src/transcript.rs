@@ -301,12 +301,7 @@ pub struct TranscribeOptions<'a> {
 /// pass the same validation.
 pub enum Transcriber<'a> {
     Api(&'a crate::openrouter::Client),
-    OnDevice(&'a mut dyn ChunkEngine),
-}
-/// An in-process engine: one 16 kHz mono chunk in, a verbose transcription
-/// body (`text`, `words` with chunk-relative times, optional `usage`) out.
-pub trait ChunkEngine {
-    fn transcribe_chunk(&mut self, samples: &[i16], language: Option<&str>) -> Result<Value>;
+    OnDevice(&'a mut dyn crate::ondevice::ChunkEngine),
 }
 pub fn transcribe(
     info: &crate::media::MediaInfo,
@@ -961,7 +956,7 @@ mod tests {
             let chunk = dir.path().join(format!("chunk{index}.wav"));
             crate::media::extract_audio(&info, &chunk, index as f64 * 10., 10.).unwrap();
             let request = json!({"model":"fixture","input_audio":{"data":STANDARD.encode(std::fs::read(chunk).unwrap()),"format":"wav"},"response_format":"verbose_json","timestamp_granularities":["word"]});
-            let key = crate::openrouter::cache_key(&[
+            let key = crate::digest::cache_key(&[
                 crate::providers::Provider::builtin().identity().as_bytes(),
                 b"audio/transcriptions",
                 &serde_json::to_vec(&request).unwrap(),
@@ -1045,7 +1040,7 @@ mod chunk_engine_tests {
         answers: Vec<Value>,
         seen: Vec<(usize, Option<String>)>,
     }
-    impl ChunkEngine for Fake {
+    impl crate::ondevice::ChunkEngine for Fake {
         fn transcribe_chunk(&mut self, samples: &[i16], language: Option<&str>) -> Result<Value> {
             self.seen.push((samples.len(), language.map(str::to_owned)));
             Ok(self.answers.remove(0))

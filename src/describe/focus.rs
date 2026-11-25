@@ -129,7 +129,7 @@ pub fn load(items: &[String], file: Option<&Path>, schema: Option<&Path>) -> Res
     };
     let schema = schema.map(load_schema).transpose()?;
     let schema_sha256 = schema.as_ref().map(|schema| sha256_hex(&canonical(schema)));
-    let sha256 = crate::openrouter::cache_key(&[
+    let sha256 = crate::digest::cache_key(&[
         b"focus-identity-v1",
         text.as_bytes(),
         schema_sha256.as_deref().unwrap_or("").as_bytes(),

@@ -59,7 +59,7 @@ fn starters() -> Result<StarterModels> {
     }
     let mut seen = std::collections::BTreeSet::new();
     for preset in &models.presets {
-        crate::models::canonical_task(&preset.task)?;
+        crate::workspace::canonical_task(&preset.task)?;
         if !seen.insert(&preset.task) {
             bail!("duplicate packaged starter model task");
         }
@@ -70,7 +70,7 @@ fn starters() -> Result<StarterModels> {
 type Providers = BTreeMap<String, crate::providers::ProviderConfig>;
 
 fn describe(task: &str, saved: &BTreeMap<String, String>, providers: &Providers) -> Result<Value> {
-    let task = crate::models::canonical_task(task)?;
+    let task = crate::workspace::canonical_task(task)?;
     // The same provider and task checks a media command applies, offline.
     let selection =
         crate::models::selection_with_defaults(task, None, saved).and_then(|selection| {
@@ -131,7 +131,7 @@ pub fn execute_defaults(args: DefaultsArgs) -> Result<Value> {
     let task = args
         .task
         .as_deref()
-        .map(crate::models::canonical_task)
+        .map(crate::workspace::canonical_task)
         .transpose()?;
     if args.action.is_some() && task.is_none() {
         bail!("provide a task, for example skywrite defaults image set MODEL");

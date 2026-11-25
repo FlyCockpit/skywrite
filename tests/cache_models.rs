@@ -11,7 +11,7 @@ fn cli(root: &Path, args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 fn cached_catalog(root: &Path, endpoint: &str, data: Value) {
-    let key = skywrite::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = skywrite::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     let path = root.join("cache/models").join(format!("{key}.json"));
     skywrite::io::write_json(
         &path,
