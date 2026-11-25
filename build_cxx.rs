@@ -1,5 +1,5 @@
 // The C++ compiler and flags cc-rs (and so cmake-rs) use for a target,
-// shared by build.rs (`#[path]` module) and tests/build_cxx.rs (`include!`).
+// shared by build.rs and tests/build_cxx.rs (a `#[path]` module in both).
 
 /// `(compiler, arguments)` from the environment, like cc-rs: the first of
 /// CXX_<target>, CXX_<target_with_underscores>, HOST_CXX or TARGET_CXX (HOST_
