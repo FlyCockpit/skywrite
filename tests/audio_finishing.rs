@@ -232,6 +232,66 @@ fn loops_crossfade_ducking_recovers_and_short_control_does_not_truncate() {
     );
 }
 #[test]
+fn ducking_gives_the_same_samples_on_every_run() {
+    // FFmpeg 7.0+ splits the two inputs into frames by thread timing, and
+    // sidechaincompress output depended on that split near the voice's end.
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path();
+    let music = p.join("music.wav");
+    ffmpeg(
+        &[
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=f=220:d=8:r=48000,volume=0.3",
+            "-c:a",
+            "pcm_s16le",
+        ],
+        &music,
+    );
+    let voice = p.join("voice.wav");
+    ffmpeg(
+        &[
+            "-v",
+            "error",
+            "-nostdin",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anoisesrc=d=8:c=white:seed=3:r=48000,volume='0.6*gt(sin(t*3),0)':eval=frame",
+            "-c:a",
+            "pcm_s16le",
+        ],
+        &voice,
+    );
+    let mut first: Option<Vec<u8>> = None;
+    for run in 0..6 {
+        let ducked = p.join(format!("ducked-{run}.wav"));
+        success(
+            p,
+            &[
+                "audio",
+                "duck",
+                music.to_str().unwrap(),
+                "-o",
+                ducked.to_str().unwrap(),
+                "--sidechain",
+                voice.to_str().unwrap(),
+            ],
+        );
+        let samples = std::fs::read(&ducked).unwrap();
+        match &first {
+            None => first = Some(samples),
+            Some(expected) => assert!(*expected == samples, "run {run} ducked differently"),
+        }
+    }
+}
+#[test]
 fn crossfaded_loop_of_a_short_source_matches_the_exact_sum_of_faded_copies() {
     // FFmpeg 7.x's acrossfade cut short loops of a 1 s source at random
     // points; every output sample must be the linear-crossfaded copies' sum.

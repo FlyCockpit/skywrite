@@ -622,9 +622,12 @@ pub fn execute(command: AudioCommand) -> Result<Value> {
         let mut args = base_args();
         input(&mut args, &current);
         input(&mut args, sidechain);
-        // A short narration must never shorten the music.
+        // A short narration must never shorten the music. sidechaincompress
+        // output depends on how its inputs are split into frames, which on
+        // FFmpeg 7.0+ varies with thread timing; fixed 1024-sample frames on
+        // both inputs make the result the same on every run and version.
         let graph = format!(
-            "[1:a:0]asetpts=N/SR/TB,aresample={RATE},apad,atrim=end_sample={target_samples}[voice];[0:a:0][voice]sidechaincompress=threshold={}:ratio={}:attack={}:release={}:makeup=1[out]",
+            "[0:a:0]asetnsamples=n=1024:p=0[music];[1:a:0]asetpts=N/SR/TB,aresample={RATE},apad,atrim=end_sample={target_samples},asetnsamples=n=1024:p=0[voice];[music][voice]sidechaincompress=threshold={}:ratio={}:attack={}:release={}:makeup=1[out]",
             options.threshold, options.ratio, options.attack_ms, options.release_ms
         );
         args.extend(crate::process::args(&[
