@@ -102,3 +102,16 @@ fn verify_help_gives_units_defaults_and_examples() {
         ],
     );
 }
+
+#[test]
+fn audio_finishing_help_states_the_mono_upmix() {
+    for command in ["normalize", "tempo", "loop", "duck", "finish"] {
+        assert_has(
+            &help(&["audio", command]),
+            &[
+                "a mono input is converted to stereo at",
+                "-3 dB per channel (equal power)",
+            ],
+        );
+    }
+}

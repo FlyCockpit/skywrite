@@ -73,6 +73,9 @@ const BED_MAX_GAIN_DB: f64 = 40.0;
 const BED_MIN_SECONDS: f64 = 1.0;
 #[derive(Debug, Args)]
 pub struct FinishArgs {
+    /// Audio to finish. Output is 48-kHz stereo: a mono input is converted to
+    /// stereo at -3 dB per channel (equal power) during preparation, before
+    /// level targets, looping, ducking and fades.
     pub input: PathBuf,
     #[arg(short, long)]
     pub output: PathBuf,
