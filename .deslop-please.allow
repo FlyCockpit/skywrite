@@ -1,0 +1,8 @@
+# Existing architectural debt suppressed by `deslop-please --allow`.
+# Fixing an entry here never fails CI; new issues not listed here fail.
+module-cycle skywrite::audio_generation,skywrite::generation,skywrite::speech_split
+module-cycle skywrite::cache,skywrite::media,skywrite::timing
+module-cycle skywrite::providers,skywrite::workspace
+wide-directory src/
+wide-directory tests/
+long-file src/generation.rs

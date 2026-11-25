@@ -52,6 +52,13 @@ Tests must not use the network, paid accounts or the real `~/.config`/`~/.cache`
 | Process and file safety | `src/process.rs` (bounded subprocesses), `src/io.rs` (atomic writes, input protection) |
 | User docs and skills | `docs/`, `README.md`, `skills/skywrite/SKILL.md`, `assets/skills/*.md` |
 
+## Structure lint
+
+- [`deslop-please`](https://github.com/deterministic-machines/deslop-please) lints code structure (module cycles, tangles, field leaks, shallow modules, long files, wide directories); fix what it finds from first principles, never by moves that only hide a finding.
+- Run it at the root: `deslop-please --allow .deslop-please.allow`.
+- `.deslop-please.allow` lists existing debt that is muted: fixing an entry never fails, a new finding fails.
+- `deslop-please --update-allow .deslop-please.allow` regenerates the file and drops any comments in it.
+
 ## Conventions
 
 - Every command prints one JSON object on success and `{"error":...}` with a nonzero exit on failure; progress goes to stderr.
