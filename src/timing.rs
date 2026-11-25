@@ -42,7 +42,7 @@ impl DecoderIdentity {
             .context("ffmpeg -version did not report a version")?;
         Ok(Self {
             ffmpeg_version: version.chars().take(128).collect(),
-            build_sha256: crate::generation::bytes_sha256(banner),
+            build_sha256: crate::digest::bytes_sha256(banner),
         })
     }
 }
@@ -141,7 +141,7 @@ pub fn exact_audio_timing(
     }
     let hash = source_hash(info)?;
     let decoder = decoder_identity()?;
-    let key = crate::openrouter::cache_key(&[
+    let key = crate::digest::cache_key(&[
         b"audio-timing-v2",
         hash.as_bytes(),
         decoder.build_sha256.as_bytes(),

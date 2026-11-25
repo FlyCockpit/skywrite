@@ -41,7 +41,7 @@ fn cached_provider_words_and_chunk_boundaries_keep_source_timestamps() {
         let audio = temp.path().join(format!("chunk-{index}.wav"));
         skywrite::media::extract_audio(&info, &audio, offset, 10.0).unwrap();
         let request = json!({"model":"provider-order-fixture","input_audio":{"data":STANDARD.encode(std::fs::read(audio).unwrap()),"format":"wav"},"response_format":"verbose_json","timestamp_granularities":["word"]});
-        let key = skywrite::openrouter::cache_key(&[
+        let key = skywrite::digest::cache_key(&[
             skywrite::providers::Provider::builtin()
                 .identity()
                 .as_bytes(),

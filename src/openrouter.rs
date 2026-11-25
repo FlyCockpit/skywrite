@@ -5,12 +5,12 @@
 //! routing, usage accounting, reasoning toggles) and its JSON transcription
 //! body go only to the built-in provider; other providers receive the standard
 //! OpenAI wire format and never another provider's key.
+use crate::digest::cache_key;
 use crate::providers::Provider;
 use anyhow::{Context, Result, bail};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use reqwest::blocking::Client as HttpClient;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -473,18 +473,6 @@ pub fn data_policy() -> Result<Option<Value>> {
     })
 }
 
-pub fn cache_key(parts: &[&[u8]]) -> String {
-    let mut hash = Sha256::new();
-    for part in parts {
-        hash.update((part.len() as u64).to_le_bytes());
-        hash.update(part);
-    }
-    hash.finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
 pub fn assistant_json(response: &Value) -> Result<Value> {
     let content = response["choices"][0]["message"]["content"]
         .as_str()
@@ -509,18 +497,6 @@ pub fn assistant_json(response: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn cache_separates_endpoint_model_and_payload() {
-        assert_ne!(cache_key(&[b"a", b"bc"]), cache_key(&[b"ab", b"c"]));
-        assert_ne!(
-            cache_key(&[b"model-a", b"audio"]),
-            cache_key(&[b"model-b", b"audio"])
-        );
-        assert_ne!(
-            cache_key(&[b"frames", b"one"]),
-            cache_key(&[b"frames", b"two"])
-        );
-    }
     #[test]
     fn extracts_json_without_inventing_model_output() {
         assert_eq!(assistant_json(&serde_json::json!({"choices":[{"message":{"content":"```json\n{\"summary\":\"hi\"}\n```"}}]})).unwrap()["summary"], "hi");

@@ -34,7 +34,7 @@ fn excessive_cached_response_stops_cli_and_preserves_source_and_output() {
     let request = json!({"model":"budget-fixture", "input_audio":{"data":STANDARD.encode(std::fs::read(&chunk).unwrap()),"format":"wav"},"response_format":"verbose_json","timestamp_granularities":["word"]});
     let cache = dir.path().join("cache");
     std::fs::create_dir_all(cache.join("responses")).unwrap();
-    let hash = skywrite::openrouter::cache_key(&[
+    let hash = skywrite::digest::cache_key(&[
         skywrite::providers::Provider::builtin()
             .identity()
             .as_bytes(),

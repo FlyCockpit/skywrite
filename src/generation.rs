@@ -1,4 +1,5 @@
 //! Explicit generation with durable intent, resumable provider jobs, and provenance.
+use crate::digest::bytes_sha256;
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use clap::{Args, Subcommand};
@@ -750,7 +751,7 @@ impl Transport {
                         .send()
                         .map_err(|e| e.without_url())?
                 } else {
-                    public_download_client(&url)?
+                    crate::public_access::public_download_client(&url)?
                         .get(url.clone())
                         .send()
                         .map_err(|e| e.without_url())?
@@ -764,7 +765,7 @@ impl Transport {
                     .to_str()?;
                 url = url.join(location)?;
                 if url.origin() != origin || !cfg!(test) {
-                    validate_public_url(&url)?;
+                    crate::public_access::validate_public_url(&url)?;
                 }
                 continue;
             }
@@ -785,90 +786,6 @@ impl Transport {
         bail!("too many video content redirects")
     }
 }
-pub(crate) fn validate_public_url(url: &url::Url) -> Result<()> {
-    if url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.port_or_known_default() != Some(443)
-        || url.fragment().is_some()
-    {
-        bail!("video downloads require public HTTPS URLs without userinfo");
-    }
-    let host = url.host_str().context("video content URL lacks host")?;
-    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".localhost") {
-        bail!("private video download host rejected");
-    }
-    Ok(())
-}
-// Conservative subset of globally reachable unicast. See the checked-in IANA
-// registries (retrieved 2026-10-30) and endpoint table under tests/fixtures/network.
-// Entire special-use parent ranges may be denied even when they contain globally
-// reachable exceptions; mapped/NAT64/6to4/Teredo addresses remain denied.
-fn public_address(ip: std::net::IpAddr) -> bool {
-    match ip {
-        std::net::IpAddr::V4(ip) => {
-            let o = ip.octets();
-            !(ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_multicast()
-                || ip.is_unspecified()
-                || o[0] == 0
-                || o[0] >= 240
-                || o[0] == 127
-                || o[0] == 100 && (64..=127).contains(&o[1])
-                || o[0] == 192 && (o[1] == 0 || o[1] == 88 && o[2] == 99)
-                || o[0] == 198 && (o[1] == 18 || o[1] == 19)
-                || o[0] == 198 && o[1] == 51 && o[2] == 100
-                || o[0] == 203 && o[1] == 0 && o[2] == 113)
-        }
-        std::net::IpAddr::V6(ip) => {
-            let s = ip.segments();
-            (s[0] & 0xe000) == 0x2000
-                && s[0] != 0x2002
-                && !(s[0] == 0x3fff && s[1] < 0x1000)
-                && !(s[0] == 0x2001 && (s[1] < 0x0200 || s[1] == 0x0db8))
-        }
-    }
-}
-pub(crate) fn public_download_client(url: &url::Url) -> Result<Client> {
-    use std::net::ToSocketAddrs;
-    validate_public_url(url)?;
-    let host = url.host().context("missing content host")?;
-    // URL's typed host avoids treating brackets around an IPv6 literal as DNS.
-    let addresses = match host {
-        url::Host::Ipv4(ip) => vec![std::net::SocketAddr::new(ip.into(), 443)],
-        url::Host::Ipv6(ip) => vec![std::net::SocketAddr::new(ip.into(), 443)],
-        url::Host::Domain(name) => (name, 443).to_socket_addrs()?.collect::<Vec<_>>(),
-    };
-    if addresses.is_empty() || addresses.iter().any(|a| !public_address(a.ip())) {
-        bail!("nonpublic video download address rejected");
-    }
-    Ok(pinned_download_builder(&host.to_string(), &addresses).build()?)
-}
-// Production calls this only after the complete resolved set passes admission.
-// Tests exercise this same socket/TLS boundary with owned loopback addresses and
-// a test root certificate, independently of the pure global-address guard.
-fn pinned_download_builder(
-    host: &str,
-    addresses: &[std::net::SocketAddr],
-) -> reqwest::blocking::ClientBuilder {
-    Client::builder()
-        .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(300))
-        .redirect(reqwest::redirect::Policy::none())
-        .no_proxy()
-        .resolve_to_addrs(host, addresses)
-}
-
-#[cfg(test)]
-pub(crate) fn public_test_client(
-    host: &str,
-    addresses: &[std::net::SocketAddr],
-) -> reqwest::blocking::ClientBuilder {
-    pinned_download_builder(host, addresses)
-}
-
 fn prompt_check(prompt: &str) -> Result<()> {
     if prompt.trim().is_empty() || prompt.len() > 32 * 1024 {
         bail!("prompt must contain 1..32768 bytes");
@@ -897,13 +814,6 @@ fn image_bytes(path: &Path) -> Result<(Vec<u8>, String)> {
         bail!("image reference exceeds 64 megapixels");
     }
     Ok((bytes, mime.into()))
-}
-pub(crate) fn bytes_sha256(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }
 fn add_image(path: &Path, refs: &mut Vec<Value>) -> Result<Value> {
     let (bytes, mime) = image_bytes(path)?;
@@ -1286,7 +1196,7 @@ fn submit_with_upload(
     if encoded.len() > MAX_REQUEST {
         bail!("generation request exceeds 64 MiB");
     }
-    let id = crate::openrouter::cache_key(&[
+    let id = crate::digest::cache_key(&[
         b"skywrite-generation-v1",
         task.as_bytes(),
         &serde_json::to_vec(&identity_body)?,
@@ -1748,9 +1658,7 @@ fn publish(dir: &Path, job: &Job, output: &Path, overwrite: bool) -> Result<()> 
     Ok(())
 }
 /// Read atomic job snapshots while holding the storage lock; never take job locks here.
-pub(crate) fn active_storage_uploads(
-    exclude: Option<&str>,
-) -> Result<std::collections::HashSet<String>> {
+pub fn active_storage_uploads(exclude: Option<&str>) -> Result<std::collections::HashSet<String>> {
     let root = jobs_root()?;
     let mut active = std::collections::HashSet::new();
     if !job_path_exists(&root)? {
@@ -2093,7 +2001,7 @@ pub fn execute_upscale(command: UpscaleCommand) -> Result<Value> {
             } else {
                 upscale_source(&args)?
             };
-            validate_public_url(&url::Url::parse(&source_url)?)?;
+            crate::public_access::validate_public_url(&url::Url::parse(&source_url)?)?;
             let mut body = json!({"model":model,"upscale_factor":args.factor,"creativity":args.creativity,"input_references":[{"type":"video_url","video_url":{"url":source_url}}]});
             if let Some(prompt) = args.prompt {
                 body["prompt"] = json!(prompt);
@@ -2138,7 +2046,7 @@ fn upscale_source(args: &VideoUpscaleArgs) -> Result<(String, Vec<Value>)> {
         )
     } else if let Some(url) = &args.source_url {
         let parsed = url::Url::parse(url)?;
-        validate_public_url(&parsed)?;
+        crate::public_access::validate_public_url(&parsed)?;
         if url.len() > 16384 {
             bail!("source URL exceeds 16 KiB");
         }
@@ -2152,7 +2060,7 @@ fn upscale_source(args: &VideoUpscaleArgs) -> Result<(String, Vec<Value>)> {
             "OpenRouter video upscaling accepts HTTPS sources only. Use --source-job ID for generated video or --source-url for your hosted file; or --upload with a configured public S3/R2 bucket for local MP4 files."
         );
     };
-    validate_public_url(&url::Url::parse(&url)?)?;
+    crate::public_access::validate_public_url(&url::Url::parse(&url)?)?;
     if let Some(input) = &args.input {
         let path = crate::media::canonical_file(input)?;
         let info = crate::media::probe(&path)?;
@@ -2720,258 +2628,6 @@ impl Transport {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn public_address_registry_endpoints_and_inverse() {
-        let table = include_str!("../tests/fixtures/network/endpoints.txt");
-        let mut count = 0;
-        for line in table.lines().filter(|line| !line.starts_with('#')) {
-            let cells: Vec<_> = line.split_whitespace().collect();
-            for address in &cells[1..=2] {
-                assert_eq!(
-                    public_address(address.parse().unwrap()),
-                    cells[3] == "true",
-                    "{} ({})",
-                    address,
-                    cells[0]
-                );
-            }
-            count += 1;
-        }
-        assert_eq!(count, 51);
-        for address in [
-            "1.1.1.1",
-            "8.8.8.8",
-            "192.1.0.1",
-            "2001:4860:4860::8888",
-            "2606:4700:4700::1111",
-            "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
-            "3fff:1000::",
-        ] {
-            assert!(public_address(address.parse().unwrap()), "{address}");
-        }
-        for address in [
-            "224.0.0.1",
-            "ff02::1",
-            "::ffff:8.8.8.8",
-            "2002:808:808::",
-            "64:ff9b::808:808",
-            "::ffff:127.0.0.1",
-        ] {
-            assert!(!public_address(address.parse().unwrap()), "{address}");
-        }
-        for raw in [
-            "http://example.com/",
-            "https://user:pass@example.com/",
-            "https://example.com:444/",
-            "https://example.com/#fragment",
-            "https://localhost/",
-            "https://x.localhost/",
-        ] {
-            assert!(
-                validate_public_url(&url::Url::parse(raw).unwrap()).is_err(),
-                "{raw}"
-            );
-        }
-        for raw in [
-            "https://127.0.0.1/",
-            "https://2130706433/",
-            "https://0x7f000001/",
-            "https://[::1]/",
-            "https://[::ffff:127.0.0.1]/",
-        ] {
-            let error = public_download_client(&url::Url::parse(raw).unwrap()).unwrap_err();
-            assert!(error.to_string().contains("nonpublic"), "{raw}: {error}");
-        }
-        let v6 = url::Url::parse("https://[2606:4700:4700::1111]/").unwrap();
-        assert!(matches!(v6.host(), Some(url::Host::Ipv6(_))));
-        assert!(public_download_client(&v6).is_ok()); // Builds only; no request.
-    }
-
-    // A bounded owned Python TLS server. Drop always kills/reaps the fixture.
-    struct OwnedTls {
-        child: std::process::Child,
-        address: std::net::SocketAddr,
-    }
-    impl Drop for OwnedTls {
-        fn drop(&mut self) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
-        }
-    }
-    impl OwnedTls {
-        fn start(ip: &str, port: u16) -> Self {
-            Self::start_with_certificate(ip, port, &crate::test_tls::chain().server)
-        }
-        fn start_with_certificate(ip: &str, port: u16, leaf: &crate::test_tls::Leaf) -> Self {
-            use std::io::BufRead;
-            let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/network");
-            // The server loads the chain before printing its port, read below.
-            let files = leaf.files();
-            let mut child = std::process::Command::new("python3")
-                .arg(base.join("tls_server.py"))
-                .arg(&files.cert)
-                .arg(&files.key)
-                .arg(ip)
-                .arg(port.to_string())
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .spawn()
-                .unwrap();
-            let mut line = String::new();
-            std::io::BufReader::new(child.stdout.take().unwrap())
-                .read_line(&mut line)
-                .unwrap();
-            let address =
-                std::net::SocketAddr::new(ip.parse().unwrap(), line.trim().parse().unwrap());
-            Self { child, address }
-        }
-        fn client(&self, host: &str) -> Client {
-            let cert = crate::test_tls::chain().ca();
-            pinned_download_builder(host, &[self.address])
-                .tls_certs_merge([cert])
-                .timeout(Duration::from_secs(2))
-                .build()
-                .unwrap()
-        }
-    }
-    #[test]
-    fn pinned_download_owned_tls_socket_and_certificate_boundary() {
-        // localhost has a real fallback address. With trusted matching TLS,
-        // a forbidden resolver fallback would turn the wrong-pin failure into
-        // success against this live server.
-        let fallback = OwnedTls::start("127.0.0.1", 0);
-        let fallback_url = format!("https://localhost:{}/", fallback.address.port());
-        assert!(
-            fallback
-                .client("localhost")
-                .get(&fallback_url)
-                .send()
-                .unwrap()
-                .status()
-                .is_success()
-        );
-        // Only 127.0.0.1 and ::1 exist on every supported loopback (macOS lo0 has
-        // no other 127/8 address). The fallback server listens on IPv4 only.
-        let unavailable =
-            std::net::SocketAddr::new("::1".parse().unwrap(), fallback.address.port());
-        let cert = crate::test_tls::chain().ca();
-        let no_fallback = pinned_download_builder("localhost", &[unavailable])
-            .tls_certs_merge([cert])
-            .timeout(Duration::from_secs(2))
-            .build()
-            .unwrap();
-        assert!(no_fallback.get(&fallback_url).send().is_err());
-        let first = OwnedTls::start("127.0.0.1", 0);
-        let port = first.address.port();
-        let second = OwnedTls::start("::1", port);
-        let domain_url = format!("https://pinned.invalid:{port}/");
-        let client = first.client("pinned.invalid");
-        assert_eq!(
-            client.get(&domain_url).send().unwrap().text().unwrap(),
-            "ok"
-        );
-        assert_eq!(
-            first
-                .client("127.0.0.1")
-                .get(format!("https://127.0.0.1:{port}/"))
-                .send()
-                .unwrap()
-                .status(),
-            reqwest::StatusCode::OK
-        );
-        // Rebuilding with the same origin but a different address reaches server 2.
-        // Killing server 1 ensures an old pool or ignored new pin cannot pass.
-        drop(first);
-        assert!(client.get(&domain_url).send().is_err());
-        assert_eq!(
-            second
-                .client("pinned.invalid")
-                .get(&domain_url)
-                .send()
-                .unwrap()
-                .text()
-                .unwrap(),
-            "ok"
-        );
-        let redirect = second
-            .client("pinned.invalid")
-            .get(format!("https://pinned.invalid:{port}/redirect"))
-            .send()
-            .unwrap();
-        assert_eq!(redirect.status(), reqwest::StatusCode::FOUND);
-        // A wrong pin must fail even while a valid same-port loopback server exists.
-        let wrong: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
-        let cert = crate::test_tls::chain().ca();
-        let wrong_client = pinned_download_builder("pinned.invalid", &[wrong])
-            .tls_certs_merge([cert])
-            .timeout(Duration::from_secs(2))
-            .build()
-            .unwrap();
-        assert!(wrong_client.get(&domain_url).send().is_err());
-        assert!(
-            second
-                .client("mismatch.invalid")
-                .get(format!("https://mismatch.invalid:{port}/"))
-                .send()
-                .is_err()
-        );
-        assert_eq!(
-            second
-                .client("::1")
-                .get(format!("https://[::1]:{port}/"))
-                .send()
-                .unwrap()
-                .status(),
-            reqwest::StatusCode::OK
-        );
-        let v6 = OwnedTls::start("::1", 0);
-        assert_eq!(
-            v6.client("::1")
-                .get(format!("https://[::1]:{}/", v6.address.port()))
-                .send()
-                .unwrap()
-                .status(),
-            reqwest::StatusCode::OK
-        );
-        for ip in ["127.0.0.1", "::1"] {
-            let mismatched =
-                OwnedTls::start_with_certificate(ip, 0, &crate::test_tls::chain().mismatch);
-            let literal = if ip.contains(':') {
-                format!("[{ip}]")
-            } else {
-                ip.to_owned()
-            };
-            assert!(
-                mismatched
-                    .client(ip)
-                    .get(format!("https://{literal}:{}/", mismatched.address.port()))
-                    .send()
-                    .is_err()
-            );
-            // Same certificate and socket succeed for its DNS SAN: rejection
-            // above is specifically the missing IP SAN, not broken trust/I/O.
-            assert_eq!(
-                mismatched
-                    .client("mismatch.invalid")
-                    .get(format!(
-                        "https://mismatch.invalid:{}/",
-                        mismatched.address.port()
-                    ))
-                    .send()
-                    .unwrap()
-                    .status(),
-                reqwest::StatusCode::OK
-            );
-        }
-        // Name mismatch remains rejected on an IPv6 connection.
-        assert!(
-            v6.client("mismatch.invalid")
-                .get(format!("https://mismatch.invalid:{}/", v6.address.port()))
-                .send()
-                .is_err()
-        );
-    }
-
     use super::*;
     use std::io::Write;
     use std::net::TcpListener;
@@ -3939,16 +3595,6 @@ mod tests {
         assert!(remote_id("../escape").is_err());
         assert!(remote_id("gen-vid_123").is_ok());
         assert!(valid_id("../escape").is_err());
-        assert!(!public_address("127.0.0.1".parse().unwrap()));
-        assert!(!public_address("::ffff:127.0.0.1".parse().unwrap()));
-        assert!(public_address("1.1.1.1".parse().unwrap()));
-        assert!(
-            validate_public_url(&url::Url::parse("http://example.com/asset").unwrap()).is_err()
-        );
-        assert!(
-            validate_public_url(&url::Url::parse("https://user:secret@example.com/asset").unwrap())
-                .is_err()
-        );
         let mut body = json!({});
         let caps = json!({"supported_parameters":{"resolution":{"type":"enum","values":["1K","2K"]},"seed":{"type":"boolean"}}});
         image_parameter(&caps, &mut body, "resolution", Some(json!("2K"))).unwrap();

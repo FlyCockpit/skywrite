@@ -126,7 +126,7 @@ pub fn sampled_frames(
     }
     let parameters = serde_json::json!({"version":1,"frames":count,"start":start,"duration":duration,"scale":"768:768:force_original_aspect_ratio=decrease","jpeg_quality":4});
     let encoded = serde_json::to_vec(&parameters)?;
-    let key = crate::openrouter::cache_key(&[b"sample-frames-v1", &encoded]);
+    let key = crate::digest::cache_key(&[b"sample-frames-v1", &encoded]);
     let parent = root.join(source_sha256).join("frames");
     std::fs::create_dir_all(&parent)?;
     let parent = parent.canonicalize()?;
@@ -297,10 +297,8 @@ fn media_sha256_settled(
     let path = crate::media::canonical_file(path)?;
     let before = stat_identity(&path, &std::fs::metadata(&path)?)?;
     let entry_path = cache_root(cache_override).ok().and_then(|root| {
-        let key = crate::openrouter::cache_key(&[
-            b"media-sha256-v1",
-            path.as_os_str().as_encoded_bytes(),
-        ]);
+        let key =
+            crate::digest::cache_key(&[b"media-sha256-v1", path.as_os_str().as_encoded_bytes()]);
         let directory = root.join("media-sha256-v1");
         private_dir(&directory).ok()?;
         Some(directory.join(format!("{key}.json")))
@@ -402,10 +400,8 @@ mod media_hash_tests {
     }
     fn entry(cache: &Path, media: &Path) -> PathBuf {
         let media = media.canonicalize().unwrap();
-        let key = crate::openrouter::cache_key(&[
-            b"media-sha256-v1",
-            media.as_os_str().as_encoded_bytes(),
-        ]);
+        let key =
+            crate::digest::cache_key(&[b"media-sha256-v1", media.as_os_str().as_encoded_bytes()]);
         cache.join("media-sha256-v1").join(format!("{key}.json"))
     }
 

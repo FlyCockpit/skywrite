@@ -25,6 +25,26 @@ pub const MODEL_TASKS: &[&str] = &[
     "speech-generation",
     "music-generation",
 ];
+/// Canonical task names are persisted; short aliases are accepted at CLI boundaries.
+pub fn canonical_task(task: &str) -> Result<&'static str> {
+    let name = match task {
+        "image" => "image-generation",
+        "video" => "video-generation",
+        "speech" => "speech-generation",
+        "music" => "music-generation",
+        other => other,
+    };
+    MODEL_TASKS
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == name)
+        .with_context(|| {
+            format!(
+                "unknown model task {task}; choose {} (aliases: image, video, speech, music)",
+                MODEL_TASKS.join(", ")
+            )
+        })
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContentKind {
@@ -496,12 +516,12 @@ pub fn model_defaults() -> Result<BTreeMap<String, String>> {
     defaults_from(&read_config(&home.join("config.json"))?)
 }
 pub fn get_default_model(task: &str) -> Result<Option<String>> {
-    let task = crate::models::canonical_task(task)?;
+    let task = canonical_task(task)?;
     validate_task(task)?;
     Ok(model_defaults()?.remove(task))
 }
 pub fn set_default_model(task: &str, model: &str) -> Result<Value> {
-    let task = crate::models::canonical_task(task)?;
+    let task = canonical_task(task)?;
     validate_task(task)?;
     validate_model(model)?;
     change_default(task, Some(model))
@@ -513,7 +533,7 @@ fn check_reference(task: &str, model: &str, config: &Value) -> Result<String> {
     Ok(resolved.reference())
 }
 pub fn unset_default_model(task: &str) -> Result<Value> {
-    let task = crate::models::canonical_task(task)?;
+    let task = canonical_task(task)?;
     validate_task(task)?;
     change_default(task, None)
 }

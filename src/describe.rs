@@ -349,7 +349,7 @@ pub fn frame_cache_key(
     cast: Option<&Cast>,
 ) -> Result<String> {
     let cast = serde_json::to_vec(&cast)?;
-    Ok(openrouter::cache_key(&[
+    Ok(crate::digest::cache_key(&[
         FRAME_PROMPT_VERSION.as_bytes(),
         source_sha256.as_bytes(),
         format!("{time:.6}").as_bytes(),
@@ -369,7 +369,7 @@ pub fn video_cache_key(
     target: &ModelRef,
     cast: Option<&Cast>,
 ) -> Result<String> {
-    Ok(openrouter::cache_key(&[
+    Ok(crate::digest::cache_key(&[
         VIDEO_PROMPT_VERSION.as_bytes(),
         source_sha256.as_bytes(),
         format!("{start:.6}:{duration:.6}").as_bytes(),
@@ -383,7 +383,7 @@ pub fn video_cache_key(
 /// Cache key for a focus answer: everything the general entry depends on
 /// (through its key) plus the focus instructions, schema and focus prompt.
 pub fn focus_cache_key(general_key: &str, focus: &Focus) -> String {
-    openrouter::cache_key(&[
+    crate::digest::cache_key(&[
         focus::FOCUS_PROMPT_VERSION.as_bytes(),
         general_key.as_bytes(),
         focus.sha256.as_bytes(),

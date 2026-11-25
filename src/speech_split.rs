@@ -328,7 +328,7 @@ fn identity(plan: &Plan, sections: &[Section]) -> Result<String> {
         .collect();
     let joined =
         json!({"template":template,"sections":sections,"paragraph_pause":plan.paragraph_pause});
-    Ok(crate::openrouter::cache_key(&[
+    Ok(crate::digest::cache_key(&[
         b"skywrite-split-speech-v1",
         &serde_json::to_vec(&joined)?,
         plan.common.take.as_deref().unwrap_or("").as_bytes(),
@@ -585,7 +585,7 @@ fn join_sections(
             "index":i,"job_id":result["id"],
             "start_seconds":start as f64 / RATE as f64,"end_seconds":end as f64 / RATE as f64,
             "break_before":section.before.name(),
-            "text_sha256":crate::generation::bytes_sha256(section.text.as_bytes()),
+            "text_sha256":crate::digest::bytes_sha256(section.text.as_bytes()),
             "first_words":first_words(&section.text),
         }));
     }

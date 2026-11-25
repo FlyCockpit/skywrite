@@ -15,7 +15,7 @@ fn cli(home: &Path, args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 fn seed_catalog(root: &Path, endpoint: &str, body: Value) {
-    let key = skywrite::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = skywrite::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     let path = root.join("models").join(format!("{key}.json"));
     skywrite::io::write_json(&path,&json!({"version":1,"endpoint":endpoint,"fetched_at":SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),"body":body}),false).unwrap();
 }

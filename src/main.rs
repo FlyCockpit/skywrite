@@ -528,7 +528,9 @@ fn finish(value: Value, output: &OutputOptions) -> Result<Value> {
 }
 fn execute(command: Command) -> Result<Value> {
     match command {
-        Command::Storage { command } => skywrite::storage::execute(command),
+        Command::Storage { command } => skywrite::storage::execute(command, || {
+            skywrite::generation::active_storage_uploads(None)
+        }),
         Command::Outputs { command } => skywrite::outputs::execute(command),
         Command::Defaults(args) => skywrite::config_cli::execute_defaults(args),
         Command::Init(args) => skywrite::config_cli::initialize(args),
@@ -923,14 +925,14 @@ fn execute(command: Command) -> Result<Value> {
                 reference,
                 cache_dir,
             } => skywrite::ondevice::download(
-                skywrite::ondevice::spec_for_reference(&reference)?,
+                skywrite::providers::ondevice_spec(&reference)?,
                 cache_dir.as_deref(),
             ),
             ModelCommand::Remove {
                 reference,
                 cache_dir,
             } => skywrite::ondevice::remove(
-                skywrite::ondevice::spec_for_reference(&reference)?,
+                skywrite::providers::ondevice_spec(&reference)?,
                 cache_dir.as_deref(),
             ),
         },

@@ -53,6 +53,12 @@ const MAX_REDIRECTS: usize = 10;
 /// How long a held model lock is retried before "another process" is reported.
 const LOCK_WAIT: Duration = Duration::from_secs(1);
 
+/// An in-process engine: one 16 kHz mono chunk in, a verbose transcription
+/// body (`text`, `words` with chunk-relative times, optional `usage`) out.
+pub trait ChunkEngine {
+    fn transcribe_chunk(&mut self, samples: &[i16], language: Option<&str>) -> Result<Value>;
+}
+
 pub fn spec(id: &str) -> Result<&'static Spec> {
     MODELS.iter().find(|spec| spec.id == id).with_context(|| {
         format!(
@@ -64,22 +70,6 @@ pub fn spec(id: &str) -> Result<&'static Spec> {
                 .join(", ")
         )
     })
-}
-
-/// Accepts `ondevice:ID` (the model reference) or the bare ID.
-pub fn spec_for_reference(reference: &str) -> Result<&'static Spec> {
-    match crate::providers::split_reference(reference)? {
-        (Some(PROVIDER), id) => spec(id),
-        (None, id) if !id.contains('/') => spec(id),
-        _ => bail!(
-            "{reference} is not an on-device model; on-device models are {}",
-            MODELS
-                .iter()
-                .map(|spec| format!("{PROVIDER}:{}", spec.id))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-    }
 }
 
 pub fn reference(spec: &Spec) -> String {
@@ -921,7 +911,7 @@ impl Engine {
     }
 }
 
-impl crate::transcript::ChunkEngine for Engine {
+impl ChunkEngine for Engine {
     /// Transcribe one 16 kHz mono chunk in the shape of an
     /// `/audio/transcriptions` verbose response, so it passes the same
     /// validation as a provider's. Word times are the model's own token
@@ -1371,20 +1361,7 @@ mod tests {
     }
 
     #[test]
-    fn references_resolve_only_to_pinned_models() {
-        assert_eq!(
-            spec_for_reference("ondevice:parakeet-tdt-0.6b-v3")
-                .unwrap()
-                .id,
-            "parakeet-tdt-0.6b-v3"
-        );
-        assert_eq!(
-            spec_for_reference("parakeet-tdt-0.6b-v3").unwrap().bytes,
-            739_508_576
-        );
-        assert!(spec_for_reference("ondevice:whisper").is_err());
-        assert!(spec_for_reference("nvidia/parakeet-tdt-0.6b-v3").is_err());
-        assert!(spec_for_reference("local:parakeet-tdt-0.6b-v3").is_err());
+    fn pinned_models_are_https_hashed_and_attributed() {
         for spec in MODELS {
             assert!(spec.url.starts_with("https://"));
             assert_eq!(spec.sha256.len(), 64);

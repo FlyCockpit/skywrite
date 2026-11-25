@@ -33,7 +33,7 @@ fn run(root: &Path, args: &[&str]) -> Value {
 }
 
 fn seed_catalog(root: &Path, endpoint: &str, models: Value) {
-    let key = skywrite::openrouter::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
+    let key = skywrite::digest::cache_key(&[b"catalog-v1", endpoint.as_bytes()]);
     skywrite::io::write_json(
         &root.join("cache/models").join(format!("{key}.json")),
         &json!({"version":1,"endpoint":endpoint,"fetched_at":1,"body":{"data":models}}),

@@ -1,6 +1,7 @@
 pub mod analysis;
 pub mod audio_sync;
 pub mod cache;
+pub mod digest;
 pub mod export;
 pub mod fonts;
 pub mod image;

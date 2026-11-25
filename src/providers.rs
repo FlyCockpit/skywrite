@@ -192,7 +192,7 @@ impl Provider {
             // Header values may be private; only names are shown.
             "header_names": self.headers.keys().collect::<Vec<_>>(),
             "timeout_seconds": self.timeout.as_secs(),
-            "tasks": if self.is_openrouter() { crate::models::TASKS.to_vec() } else { PORTABLE_TASKS.to_vec() },
+            "tasks": if self.is_openrouter() { crate::workspace::MODEL_TASKS.to_vec() } else { PORTABLE_TASKS.to_vec() },
             "openrouter_only_features": if self.is_openrouter() { json!("data policy routing, usage cost accounting, reasoning toggle") } else { json!("not sent: data policy routing (SKYWRITE_DATA_POLICY), usage accounting and reasoning fields are OpenRouter-only; this server's own retention applies") },
             "warnings": self.warnings(),
         })
@@ -230,6 +230,23 @@ pub fn validate_name(name: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// The on-device model a reference names: `ondevice:ID` or the bare ID.
+pub fn ondevice_spec(reference: &str) -> Result<&'static crate::ondevice::Spec> {
+    use crate::ondevice::{MODELS, PROVIDER, spec};
+    match split_reference(reference)? {
+        (Some(PROVIDER), id) => spec(id),
+        (None, id) if !id.contains('/') => spec(id),
+        _ => bail!(
+            "{reference} is not an on-device model; on-device models are {}",
+            MODELS
+                .iter()
+                .map(|spec| format!("{PROVIDER}:{}", spec.id))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
 }
 
 /// Syntax only: `(None, id)` for a bare OpenRouter ID, `(Some(name), model)`
@@ -576,6 +593,20 @@ pub fn execute(command: ProvidersCommand) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ondevice_references_resolve_only_to_pinned_models() {
+        assert_eq!(
+            ondevice_spec("ondevice:parakeet-tdt-0.6b-v3").unwrap().id,
+            "parakeet-tdt-0.6b-v3"
+        );
+        assert_eq!(
+            ondevice_spec("parakeet-tdt-0.6b-v3").unwrap().bytes,
+            739_508_576
+        );
+        assert!(ondevice_spec("ondevice:whisper").is_err());
+        assert!(ondevice_spec("nvidia/parakeet-tdt-0.6b-v3").is_err());
+        assert!(ondevice_spec("local:parakeet-tdt-0.6b-v3").is_err());
+    }
 
     fn configured(name: &str, base: &str) -> BTreeMap<String, ProviderConfig> {
         BTreeMap::from([(

@@ -303,7 +303,7 @@ fn load(path: &Path) -> Result<Loaded> {
         path,
         base,
         manifest,
-        hash: crate::openrouter::cache_key(&[&raw]),
+        hash: crate::digest::cache_key(&[&raw]),
     };
     validate(&loaded)?;
     Ok(loaded)
@@ -563,7 +563,7 @@ fn state_dir(l: &Loaded) -> Result<PathBuf> {
     secure_directory(&home)?;
     let projects = home.join("projects");
     secure_directory(&projects)?;
-    let key = crate::openrouter::cache_key(&[b"project-v1", l.path.as_os_str().as_encoded_bytes()]);
+    let key = crate::digest::cache_key(&[b"project-v1", l.path.as_os_str().as_encoded_bytes()]);
     let root = projects.join(key);
     secure_directory(&root)?;
     Ok(root)
