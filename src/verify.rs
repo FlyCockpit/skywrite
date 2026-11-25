@@ -187,6 +187,13 @@ impl Allowances {
             None
         }
     }
+    /// Why a frozen span is the edit's own still, if it is.
+    fn frozen(&self, start: f64, end: Option<f64>) -> Option<&'static str> {
+        self.stills
+            .iter()
+            .any(|&w| self.within(w, start, end))
+            .then_some("still")
+    }
     fn report(&self) -> Value {
         json!({"fade_in":self.fade_in.map(|(a, b)| [a, b]),"fade_out":self.fade_out.map(|(a, b)| [a, b]),
             "stills":self.stills.iter().map(|&(a, b)| [a, b]).collect::<Vec<_>>(),"tolerance_seconds":self.tolerance})
@@ -765,11 +772,7 @@ fn frozen_check(
             inside_black += 1;
             continue;
         }
-        let allowed = allowances
-            .stills
-            .iter()
-            .any(|&w| allowances.within(w, start, end))
-            .then_some("still");
+        let allowed = allowances.frozen(start, end);
         spans.push(json!({"start_seconds":start,"end_seconds":end,"duration_seconds":end.map(|e| e - start),
             "allowed":allowed,"fails":allowed.is_none()}));
     }

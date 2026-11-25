@@ -559,12 +559,8 @@ pub fn execute(command: OutputsCommand) -> Result<Value> {
                 "storage configuration changed; retry output upload"
             );
             let cloud = crate::storage::Cloud::new(&config)?;
-            let mut result = cloud.run(upload(
-                &cloud.store,
-                &config.outputs_prefix,
-                &plan,
-                overwrite,
-            ))?;
+            let mut result = cloud
+                .run(async |store| upload(store, &config.outputs_prefix, &plan, overwrite).await)?;
             let key = result["output"]["blob_key"]
                 .as_str()
                 .context("upload result lacks blob key")?;
@@ -582,12 +578,9 @@ pub fn execute(command: OutputsCommand) -> Result<Value> {
                 name_check(name)?;
             }
             let cloud = crate::storage::Cloud::new(&config)?;
-            cloud.run(list(
-                &cloud.store,
-                &config.outputs_prefix,
-                limit,
-                after.as_deref(),
-            ))
+            cloud.run(async |store| {
+                list(store, &config.outputs_prefix, limit, after.as_deref()).await
+            })
         }
         OutputsCommand::Download {
             name,
@@ -601,23 +594,26 @@ pub fn execute(command: OutputsCommand) -> Result<Value> {
             );
             crate::io::protect_inputs(&destination, &[crate::storage::config_path()?])?;
             let cloud = crate::storage::Cloud::new(&config)?;
-            cloud.run(download(
-                &cloud.store,
-                &config.outputs_prefix,
-                &name,
-                &destination,
-                overwrite,
-            ))
+            cloud.run(async |store| {
+                download(
+                    store,
+                    &config.outputs_prefix,
+                    &name,
+                    &destination,
+                    overwrite,
+                )
+                .await
+            })
         }
         OutputsCommand::Url { name, check } => {
             name_check(&name)?;
             let cloud = crate::storage::Cloud::new(&config)?;
-            let (record, prefix) = cloud.run(async {
-                let (record, _) = read_record(&cloud.store, &config.outputs_prefix, &name)
+            let (record, prefix) = cloud.run(async |store| {
+                let (record, _) = read_record(store, &config.outputs_prefix, &name)
                     .await?
                     .context("named output not found")?;
                 let prefix = if check {
-                    Some(signed_prefix(&cloud.store, &record).await?)
+                    Some(signed_prefix(store, &record).await?)
                 } else {
                     None
                 };

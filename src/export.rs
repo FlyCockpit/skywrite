@@ -134,8 +134,8 @@ pub fn export_with(
         edit
     };
     let urls = if interchange_target {
-        let urls = media_url::MediaUrls::new(edit, root.as_ref())?;
-        warnings.extend(urls.warnings.iter().cloned());
+        let (urls, notes) = media_url::MediaUrls::new(edit, root.as_ref())?;
+        warnings.extend(notes);
         Some(urls)
     } else {
         None
@@ -174,7 +174,7 @@ pub fn export_with(
                 edit.audible_spans().iter().map(|s| s.speed),
             )?;
             io::atomic_write(output, python_script(edit, &speeds)?.as_bytes(), overwrite)?;
-            warnings.extend(speeds.warnings.iter().cloned());
+            warnings.extend(speeds.warnings());
             audio_stretcher = speeds.report();
         }
         ("hyperframes" | "remotion", _) => return project::export(edit, target, output),
@@ -1325,7 +1325,7 @@ pub fn render(
         "rendered duration differs from requested timeline"
     );
     let mut warnings = edit.warnings.clone();
-    warnings.extend(speeds.warnings.iter().cloned());
+    warnings.extend(speeds.warnings());
     let (temp, rotation_cleanup) = match display_rotation(temp.path())? {
         Some(rotation) => {
             let (cleared, rotation_cleanup) = clear_display_rotation(temp.path(), parent)?;

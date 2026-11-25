@@ -1007,8 +1007,7 @@ fn provider_health() -> (Value, bool) {
                 return value;
             }
             checked = true;
-            let mut probe = provider.clone();
-            probe.timeout = Duration::from_secs(10);
+            let probe = provider.clone().with_timeout(Duration::from_secs(10));
             let started = std::time::Instant::now();
             let result = skywrite::openrouter::Client::new(&probe, None)
                 .and_then(|client| client.catalog("models"));

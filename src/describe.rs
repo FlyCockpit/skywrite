@@ -571,8 +571,7 @@ impl<'a> Asker<'a> {
         let response = match api.request("chat/completions", &request) {
             Ok(response) => response,
             Err(error)
-                if api.provider().is_openrouter()
-                    && error.to_string().contains("Reasoning is mandatory") =>
+                if api.is_openrouter() && error.to_string().contains("Reasoning is mandatory") =>
             {
                 request.as_object_mut().expect("object").remove("reasoning");
                 api.request("chat/completions", &request)?

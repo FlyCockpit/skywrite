@@ -469,9 +469,11 @@ impl HttpService for BoundedService {
         Ok(HttpResponse::from_parts(parts, bytes.into()))
     }
 }
+/// The S3/R2 store with its own runtime: operations reach the store only
+/// through [`Cloud::run`], inside that runtime and under its deadline.
 pub(crate) struct Cloud {
-    pub(crate) store: AmazonS3,
-    pub(crate) runtime: tokio::runtime::Runtime,
+    store: AmazonS3,
+    runtime: tokio::runtime::Runtime,
 }
 impl Cloud {
     pub(crate) fn new(config: &StorageConfig) -> Result<Self> {
@@ -533,45 +535,47 @@ impl Cloud {
         };
         Ok(Self { store, runtime })
     }
-    pub(crate) fn run<T>(&self, future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    pub(crate) fn run<T>(
+        &self,
+        operation: impl AsyncFnOnce(&dyn ObjectStore) -> Result<T>,
+    ) -> Result<T> {
         self.runtime.block_on(async {
-            tokio::time::timeout(Duration::from_secs(600), future)
+            tokio::time::timeout(Duration::from_secs(600), operation(&self.store))
                 .await
                 .context("S3 operation deadline exceeded; some effects may already be committed, and the in-flight outcome may be unknown. Retrying is idempotent; inspect or rerun the scoped operation.")?
         })
     }
-    async fn marked_head(&self, record: &UploadRecord) -> Result<bool> {
-        match self
-            .store
-            .get_opts(
-                &object_store::path::Path::from(record.key.clone()),
-                GetOptions::default().with_head(true),
-            )
-            .await
-        {
-            Ok(result) => {
-                ensure!(
-                    result.meta.size == record.bytes,
-                    "existing hash object has a different size; refusing replacement"
-                );
-                ensure!(
-                    result
+}
+async fn marked_head(store: &dyn ObjectStore, record: &UploadRecord) -> Result<bool> {
+    match store
+        .get_opts(
+            &object_store::path::Path::from(record.key.clone()),
+            GetOptions::default().with_head(true),
+        )
+        .await
+    {
+        Ok(result) => {
+            ensure!(
+                result.meta.size == record.bytes,
+                "existing hash object has a different size; refusing replacement"
+            );
+            ensure!(
+                result
+                    .attributes
+                    .get(&Attribute::Metadata("skywrite".into()))
+                    .map(|v| v.as_ref())
+                    == Some("1")
+                    && result
                         .attributes
-                        .get(&Attribute::Metadata("skywrite".into()))
+                        .get(&Attribute::Metadata("sha256".into()))
                         .map(|v| v.as_ref())
-                        == Some("1")
-                        && result
-                            .attributes
-                            .get(&Attribute::Metadata("sha256".into()))
-                            .map(|v| v.as_ref())
-                            == Some(record.sha256.as_str()),
-                    "existing hash object lacks matching Skywrite SHA metadata; refusing replacement"
-                );
-                Ok(true)
-            }
-            Err(object_store::Error::NotFound { .. }) => Ok(false),
-            Err(error) => Err(error).context("S3 HEAD failed (only NotFound permits upload)"),
+                        == Some(record.sha256.as_str()),
+                "existing hash object lacks matching Skywrite SHA metadata; refusing replacement"
+            );
+            Ok(true)
         }
+        Err(object_store::Error::NotFound { .. }) => Ok(false),
+        Err(error) => Err(error).context("S3 HEAD failed (only NotFound permits upload)"),
     }
 }
 /// Caller holds the operation lock; only the prepared job path calls this.
@@ -582,8 +586,8 @@ pub fn ensure_uploaded(plan: &UploadPlan) -> Result<bool> {
         "storage configuration changed; prepare this upload again"
     );
     let cloud = Cloud::new(&plan.record.config)?;
-    cloud.run(async {
-        if cloud.marked_head(&plan.record).await? {
+    cloud.run(async |store| {
+        if marked_head(store, &plan.record).await? {
             return Ok(false);
         }
         let mut staged = plan.staged.try_clone()?;
@@ -604,8 +608,7 @@ pub fn ensure_uploaded(plan: &UploadPlan) -> Result<bool> {
             Attribute::Metadata("sha256".into()),
             plan.record.sha256.clone().into(),
         );
-        let created = match cloud
-            .store
+        let created = match store
             .put_opts(
                 &object_store::path::Path::from(plan.record.key.clone()),
                 bytes.into(),
@@ -625,7 +628,7 @@ pub fn ensure_uploaded(plan: &UploadPlan) -> Result<bool> {
             Err(e) => return Err(e).context("S3 upload failed"),
         };
         ensure!(
-            cloud.marked_head(&plan.record).await?,
+            marked_head(store, &plan.record).await?,
             "uploaded object is missing after PUT"
         );
         Ok(created)
@@ -639,10 +642,9 @@ pub fn delete_upload(record: &UploadRecord) -> Result<()> {
         "storage configuration changed; restore the recorded settings before cleanup"
     );
     let cloud = Cloud::new(&record.config)?;
-    cloud.run(async {
-        if cloud.marked_head(record).await? {
-            cloud
-                .store
+    cloud.run(async |store| {
+        if marked_head(store, record).await? {
+            store
                 .delete(&object_store::path::Path::from(record.key.clone()))
                 .await?;
         }
@@ -737,9 +739,9 @@ fn purge(dry_run: bool, include_active: bool, limit: usize, after: Option<&str>)
         );
     }
     let cloud = Cloud::new(&config)?;
-    cloud.run(async {
+    cloud.run(async |store| {
         let prefix=object_store::path::Path::from(config.prefix.trim_end_matches('/'));
-        let mut listing=if let Some(after)=after { cloud.store.list_with_offset(Some(&prefix),&object_store::path::Path::from(after)) } else { cloud.store.list(Some(&prefix)) };
+        let mut listing=if let Some(after)=after { store.list_with_offset(Some(&prefix),&object_store::path::Path::from(after)) } else { store.list(Some(&prefix)) };
         let mut examined=0usize; let mut selected=Vec::new(); let mut skipped=0usize; let mut deleted=0usize; let mut truncated=false;
         let mut last_key=None; let mut inspection_errors=Vec::new(); let mut error_count=0usize;
         while let Some(meta)=listing.try_next().await.context(format!("S3 listing failed after {deleted} deletions"))? {
@@ -747,9 +749,9 @@ fn purge(dry_run: bool, include_active: bool, limit: usize, after: Option<&str>)
             let key=meta.location.to_string(); last_key=Some(key.clone()); let Some(hash)=owned_hash(&config.prefix,&key) else {skipped+=1;continue;};
             let record=UploadRecord{config:config.clone(),key:key.clone(),sha256:hash.into(),bytes:meta.size,media_type:"video/mp4".into()};
             if record.validate().is_err() || active.contains(&record.identity()?) {skipped+=1;continue;}
-            match cloud.marked_head(&record).await { Ok(true)=>{}, Ok(false)=>continue, Err(error)=>{skipped+=1;error_count+=1;
+            match marked_head(store, &record).await { Ok(true)=>{}, Ok(false)=>continue, Err(error)=>{skipped+=1;error_count+=1;
                 if inspection_errors.len()<100 { inspection_errors.push(json!({"key":key,"message":format!("{error:#}").chars().take(512).collect::<String>()})); } continue;} }
-            if !dry_run { cloud.store.delete(&meta.location).await.with_context(||format!("purge stopped after {deleted} deletions; failed key {key}"))?; deleted+=1; }
+            if !dry_run { store.delete(&meta.location).await.with_context(||format!("purge stopped after {deleted} deletions; failed key {key}"))?; deleted+=1; }
             selected.push(key);
         }
         Ok(json!({"dry_run":dry_run,"bucket":config.bucket,"prefix":config.prefix,"examined":examined,"deleted":deleted,"selected":selected,"skipped":skipped,"truncated":truncated,"next_after":if truncated {last_key} else {None},"inspection_error_count":error_count,"inspection_errors":inspection_errors,"complete":!truncated && error_count==0,
