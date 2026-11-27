@@ -7,7 +7,6 @@ description = "Agent-friendly media understanding, synchronization, and editing 
 license = "MIT"
 authors = ["FlyCockpit LLC"]
 repository = "https://github.com/FlyCockpit/skywrite"
-homepage = "https://github.com/FlyCockpit/skywrite"
 readme = "README.md"
 # Repository-only files (CI workflows, issue templates, the README logo) stay out of the crate.
 exclude = [".github/"]
